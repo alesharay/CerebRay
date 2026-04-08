@@ -80,7 +80,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci || npm install --no-audit
 
       - name: TypeScript type check
         working-directory: frontend
@@ -106,7 +106,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci || npm install --no-audit
 
       - name: Run Vitest
         working-directory: frontend
