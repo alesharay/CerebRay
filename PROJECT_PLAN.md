@@ -37,22 +37,22 @@
 
 ### 4. Auth (Keycloak OIDC + Local Fallback)
 
-- [ ] Keycloak OIDC integration (coreos/go-oidc + oauth2)
-- [ ] Session management via Redis (gorilla/sessions or similar)
-- [ ] Local auth fallback when KEYCLOAK_ISSUER_URL is empty
-- [ ] Auth middleware protecting /api routes
+- [x] Keycloak OIDC integration (oauth2 + PKCE)
+- [x] Session management via Redis (custom store with sliding expiry)
+- [x] Local auth fallback when KEYCLOAK_ISSUER_URL is empty
+- [x] Auth middleware protecting /api routes
 - [ ] Login and logout flow tested end to end
 
 ### 5. Backend Core
 
-- [ ] Chi router with middleware (logging, recovery, CORS, auth)
-- [ ] Health check endpoint (/health)
-- [ ] Zerolog structured logging
-- [ ] Config loaded from environment (envconfig or similar)
-- [ ] CRUD handlers for notes
-- [ ] CRUD handlers for tags
-- [ ] Note linking (bidirectional references)
-- [ ] Search endpoint using PostgreSQL full-text search
+- [x] Chi router with middleware (logging, recovery, CORS, auth)
+- [x] Health check endpoint (/health)
+- [x] Zerolog structured logging
+- [x] Config loaded from environment (godotenv + fail-fast validation)
+- [x] CRUD handlers for notes
+- [x] CRUD handlers for tags
+- [x] Note linking (bidirectional references)
+- [x] Search endpoint using PostgreSQL full-text search
 
 ### 6. AI Integration
 
