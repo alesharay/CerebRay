@@ -1,0 +1,152 @@
+###############################################################################
+# Cerebray - CI Pipeline
+#
+# Runs on every push to main and on every pull request.
+# Jobs run in parallel where possible to keep the pipeline fast.
+#
+# Jobs:
+#   lint-backend     > go vet
+#   test-backend     > go test with race detector
+#   lint-frontend    > ESLint + TypeScript type check
+#   test-frontend    > Vitest component tests
+#   build-and-push   > Build Docker images and push to registry (main only)
+###############################################################################
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: registry.homelab
+
+# Cancel in-progress runs for the same branch when a new push arrives.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # -- Backend Lint ------------------------------------------------------------
+  lint-backend:
+    name: Lint (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run go vet
+        working-directory: backend
+        run: go vet ./...
+
+  # -- Backend Tests -----------------------------------------------------------
+  test-backend:
+    name: Test (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Run tests
+        working-directory: backend
+        run: go test -race -count=1 -timeout=120s ./...
+
+  # -- Frontend Lint -----------------------------------------------------------
+  lint-frontend:
+    name: Lint (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript type check
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: ESLint
+        working-directory: frontend
+        run: npm run lint
+
+  # -- Frontend Tests ----------------------------------------------------------
+  test-frontend:
+    name: Test (React)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Vitest
+        working-directory: frontend
+        run: npx vitest run
+
+  # -- Build & Push Images -----------------------------------------------------
+  # Only runs on push to main (not on pull requests).
+  # The runner must be able to reach $REGISTRY (e.g. trusted CA cert, login).
+  build-and-push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [lint-backend, test-backend, lint-frontend, test-frontend]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tag format: ts-<unix-timestamp>-<short-sha>
+      # Timestamp prefix ensures alphabetical order == chronological order,
+      # which Flux ImagePolicy alphabetical filtering requires.
+      - name: Compute image tag
+        id: tag
+        run: echo "TAG=ts-$(date +%s)-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        run: |
+          docker build \
+            --cache-from ${{ env.REGISTRY }}/cerebray-backend:latest \
+            -t ${{ env.REGISTRY }}/cerebray-backend:${{ steps.tag.outputs.TAG }} \
+            -t ${{ env.REGISTRY }}/cerebray-backend:latest \
+            -f backend/Dockerfile backend/
+          docker push ${{ env.REGISTRY }}/cerebray-backend:${{ steps.tag.outputs.TAG }}
+          docker push ${{ env.REGISTRY }}/cerebray-backend:latest
+
+      - name: Build and push frontend image
+        run: |
+          docker build \
+            --cache-from ${{ env.REGISTRY }}/cerebray-frontend:latest \
+            -t ${{ env.REGISTRY }}/cerebray-frontend:${{ steps.tag.outputs.TAG }} \
+            -t ${{ env.REGISTRY }}/cerebray-frontend:latest \
+            -f frontend/Dockerfile frontend/
+          docker push ${{ env.REGISTRY }}/cerebray-frontend:${{ steps.tag.outputs.TAG }}
+          docker push ${{ env.REGISTRY }}/cerebray-frontend:latest

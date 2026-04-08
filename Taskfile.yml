@@ -1,0 +1,704 @@
+# Taskfile for cerebray
+# Install Task: https://taskfile.dev/installation/
+# Usage: task <task-name>
+
+version: "3"
+
+vars:
+  BACKEND_DIR: backend
+  FRONTEND_DIR: frontend
+  BINARY_OUT: backend/bin/server
+  # Deployment config. Override via deploy.env or environment variables.
+  # Defaults target the homelab environment.
+  REGISTRY: '{{.REGISTRY | default "registry.homelab"}}'
+  APP_DOMAIN: '{{.APP_DOMAIN | default "cerebray.homelab"}}'
+  CERT_ISSUER: '{{.CERT_ISSUER | default "homelab-ca-issuer"}}'
+  VAULT_SECRET_STORE: '{{.VAULT_SECRET_STORE | default "homelab-path-vault"}}'
+  VAULT_PATH: '{{.VAULT_PATH | default "homelab/cerebray"}}'
+  NAS_HOST: '{{.NAS_HOST | default "100.114.88.8"}}'
+  NAS_USER: '{{.NAS_USER | default "aray"}}'
+  NAS_SSH_KEY: '{{.NAS_SSH_KEY | default "~/.ssh/mac-mini-general-use"}}'
+  BACKEND_IMAGE: '{{.REGISTRY}}/cerebray-backend'
+  FRONTEND_IMAGE: '{{.REGISTRY}}/cerebray-frontend'
+  GITOPS_DIR: '{{.GITOPS_DIR | default "../../homelab-gitops"}}'
+  MANIFESTS_DIR: '{{.GITOPS_DIR}}/apps/base/cerebray'
+
+# Load env files. deploy.env holds deployment overrides (registry, domain, etc).
+# backend/.env holds app secrets for local dev and vault pushes.
+dotenv:
+  - deploy.env
+  - "{{.BACKEND_DIR}}/.env"
+
+tasks:
+
+  # ---------------------------------------------------------------------------
+  # Default: list available tasks
+  # ---------------------------------------------------------------------------
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure (PostgreSQL + Redis via Docker Compose)
+  # ---------------------------------------------------------------------------
+  infra:up:
+    desc: Start PostgreSQL and Redis containers
+    cmds:
+      - docker compose -f docker-compose.dev.yml up -d
+    sources:
+      - docker-compose.dev.yml
+
+  infra:down:
+    desc: Stop PostgreSQL and Redis containers
+    cmds:
+      - docker compose -f docker-compose.dev.yml down
+
+  infra:logs:
+    desc: Tail Docker Compose logs
+    cmds:
+      - docker compose -f docker-compose.dev.yml logs -f
+
+  infra:reset:
+    desc: Stop containers and delete all volumes (wipes local DB data)
+    prompt: This will delete all local PostgreSQL and Redis data. Continue?
+    cmds:
+      - docker compose -f docker-compose.dev.yml down -v
+
+  # ---------------------------------------------------------------------------
+  # Production stack (full app via Docker Compose, no k8s required)
+  # ---------------------------------------------------------------------------
+  prod:up:
+    desc: Build and start the full production stack via Docker Compose
+    cmds:
+      - docker compose -f docker-compose.prod.yml up -d --build
+
+  prod:down:
+    desc: Stop the production stack
+    cmds:
+      - docker compose -f docker-compose.prod.yml down
+
+  prod:logs:
+    desc: Tail production stack logs
+    cmds:
+      - docker compose -f docker-compose.prod.yml logs -f
+
+  prod:reset:
+    desc: Stop production stack and delete all volumes (wipes DB data)
+    prompt: This will delete all production PostgreSQL and Redis data. Continue?
+    cmds:
+      - docker compose -f docker-compose.prod.yml down -v
+
+  # ---------------------------------------------------------------------------
+  # Local dev (infra + backend + frontend together)
+  # ---------------------------------------------------------------------------
+  run:local:
+    desc: Start infra, backend, and frontend concurrently for local development
+    deps:
+      - infra:up
+      - frontend:install
+    cmds:
+      - bash -c 'trap "kill 0" INT TERM EXIT; (cd {{.BACKEND_DIR}} && go run ./cmd/server) & (cd {{.FRONTEND_DIR}} && npm run dev) & wait'
+
+  # ---------------------------------------------------------------------------
+  # Backend
+  # ---------------------------------------------------------------------------
+  backend:run:
+    desc: Run the Go backend server (hot-reload not included, restart manually)
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - go run ./cmd/server
+
+  backend:build:
+    desc: Compile the Go backend to bin/server
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - mkdir -p bin
+      - go build -o bin/server ./cmd/server
+    sources:
+      - "**/*.go"
+    generates:
+      - bin/server
+
+  backend:test:
+    desc: Run all Go tests
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - go test -v -race ./...
+
+  backend:test:short:
+    desc: Run Go tests skipping long-running integration tests
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - go test -short ./...
+
+  backend:lint:
+    desc: Run go vet on all packages
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - go vet ./...
+
+  backend:tidy:
+    desc: Tidy go.mod and go.sum
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - go mod tidy
+
+  # ---------------------------------------------------------------------------
+  # Database (PostgreSQL migrations via golang-migrate)
+  # ---------------------------------------------------------------------------
+  db:migrate:up:
+    desc: Run all pending database migrations
+    cmds:
+      - migrate -database "${DATABASE_URL}" -path {{.BACKEND_DIR}}/db/migrations up
+
+  db:migrate:down:
+    desc: Roll back the last database migration
+    cmds:
+      - migrate -database "${DATABASE_URL}" -path {{.BACKEND_DIR}}/db/migrations down 1
+
+  db:migrate:create:
+    desc: Create a new migration file pair (usage - task db:migrate:create -- <name>)
+    cmds:
+      - migrate create -ext sql -dir {{.BACKEND_DIR}}/db/migrations -seq {{.CLI_ARGS}}
+
+  db:sqlc:generate:
+    desc: Regenerate Go code from sqlc queries
+    dir: "{{.BACKEND_DIR}}"
+    cmds:
+      - sqlc generate
+
+  db:seed:
+    desc: Seed the database with sample data (placeholder)
+    cmds:
+      - echo "TODO - implement seed script"
+
+  # ---------------------------------------------------------------------------
+  # Frontend
+  # ---------------------------------------------------------------------------
+  frontend:install:
+    desc: Install frontend npm dependencies
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm install
+    sources:
+      - package.json
+    generates:
+      - node_modules/.package-lock.json
+
+  frontend:dev:
+    desc: Start the Vite dev server (proxies /api and /auth to :8080)
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run dev
+
+  frontend:build:
+    desc: Build the frontend for production
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run build
+    sources:
+      - src/**/*
+      - index.html
+      - vite.config.ts
+    generates:
+      - dist/**/*
+
+  frontend:preview:
+    desc: Preview the production build locally
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run preview
+
+  frontend:test:
+    desc: Run Vitest unit and component tests
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm test
+
+  frontend:test:e2e:
+    desc: Run Playwright end-to-end tests
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run test:e2e
+
+  frontend:lint:
+    desc: Lint TypeScript and React source files
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run lint
+
+  frontend:typecheck:
+    desc: Type-check TypeScript without emitting files
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run typecheck
+
+  # ---------------------------------------------------------------------------
+  # Combined quality gates (run before committing)
+  # ---------------------------------------------------------------------------
+  smoke:
+    desc: Run smoke test against the live deployment (placeholder)
+    cmds:
+      - echo "TODO - implement smoke test"
+
+  lint:
+    desc: Lint backend and frontend
+    deps:
+      - backend:lint
+      - frontend:lint
+
+  test:
+    desc: Run all backend and frontend tests
+    deps:
+      - backend:test
+      - frontend:test
+
+  build:
+    desc: Build backend binary and frontend production bundle
+    deps:
+      - backend:build
+      - frontend:build
+
+  typecheck:
+    desc: Run backend vet and frontend typecheck
+    deps:
+      - backend:lint
+      - frontend:typecheck
+
+  # ---------------------------------------------------------------------------
+  # Deployment
+  # ---------------------------------------------------------------------------
+  deploy:backend:
+    desc: Build and push the backend Docker image to the configured registry
+    vars:
+      TAG:
+        sh: echo "ts-$(date +%s)-$(git rev-parse --short HEAD)"
+    cmds:
+      - docker build -t {{.REGISTRY}}/cerebray-backend:{{.TAG}} -t {{.REGISTRY}}/cerebray-backend:latest -f backend/Dockerfile backend/
+      - docker push {{.REGISTRY}}/cerebray-backend:{{.TAG}}
+      - docker push {{.REGISTRY}}/cerebray-backend:latest
+
+  deploy:frontend:
+    desc: Build and push the frontend Docker image to the configured registry
+    vars:
+      TAG:
+        sh: echo "ts-$(date +%s)-$(git rev-parse --short HEAD)"
+    cmds:
+      - docker build
+          --build-arg VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY:-}
+          --build-arg VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST:-}
+          -t {{.REGISTRY}}/cerebray-frontend:{{.TAG}}
+          -t {{.REGISTRY}}/cerebray-frontend:latest
+          -f frontend/Dockerfile frontend/
+      - docker push {{.REGISTRY}}/cerebray-frontend:{{.TAG}}
+      - docker push {{.REGISTRY}}/cerebray-frontend:latest
+
+  deploy:all:
+    desc: Build and push both backend and frontend images to the configured registry
+    deps:
+      - deploy:backend
+      - deploy:frontend
+
+  deploy:k8s:
+    desc: Restart backend and frontend pods to pick up the latest pushed images
+    cmds:
+      - kubectl rollout restart deployment/backend deployment/frontend -n cerebray
+      - kubectl rollout status deployment/backend deployment/frontend -n cerebray
+
+  secrets:vault:
+    desc: Push all cerebray secrets to Vault (SSHes to NAS and execs into vault container)
+    vars:
+      VAULT_CONTAINER: vault
+      VAULT_ADDR: "http://127.0.0.1:8200"
+    cmds:
+      - |
+        if [ -z "${VAULT_TOKEN:-}" ]; then
+          echo "Set VAULT_TOKEN in backend/.env before running."
+          exit 1
+        fi
+        python3 -c "
+        import json, os
+        data = {
+            'session-secret':     os.environ['SESSION_SECRET'],
+            'database-url':       os.environ['DATABASE_URL'],
+            'redis-url':          os.environ['REDIS_URL'],
+            'anthropic-api-key':  os.environ['ANTHROPIC_API_KEY'],
+            'keycloak-client-secret': os.environ.get('KEYCLOAK_CLIENT_SECRET', ''),
+        }
+        print(json.dumps(data))
+        " | ssh -p 22 -i {{.NAS_SSH_KEY}} {{.NAS_USER}}@{{.NAS_HOST}} \
+            "sudo docker exec -i \
+              -e VAULT_ADDR={{.VAULT_ADDR}} \
+              -e VAULT_TOKEN=${VAULT_TOKEN} \
+              {{.VAULT_CONTAINER}} \
+              sh -c '/bin/cat > /tmp/vault-payload.json && vault kv put {{.VAULT_PATH}} @/tmp/vault-payload.json; rm -f /tmp/vault-payload.json'"
+
+  secrets:k8s:
+    desc: Create cerebray-secrets Kubernetes secret directly, bypassing Vault (idempotent)
+    cmds:
+      - |
+        kubectl create secret generic cerebray-secrets \
+          --namespace cerebray \
+          --from-literal=session-secret="${SESSION_SECRET}" \
+          --from-literal=database-url="${DATABASE_URL}" \
+          --from-literal=redis-url="${REDIS_URL}" \
+          --from-literal=anthropic-api-key="${ANTHROPIC_API_KEY}" \
+          --from-literal=keycloak-client-secret="${KEYCLOAK_CLIENT_SECRET:-}" \
+          --save-config --dry-run=client -o yaml | kubectl apply -f -
+
+  k8s:manifests:
+    desc: Write all cerebray k8s manifests to GITOPS_DIR/apps/base/cerebray (idempotent)
+    vars:
+      D: '{{.MANIFESTS_DIR}}'
+    cmds:
+      - mkdir -p {{.D}}
+      - |
+        # Register cerebray in apps/base/kustomization.yaml if not already present
+        KUST="{{.GITOPS_DIR}}/apps/base/kustomization.yaml"
+        if ! grep -q "cerebray" "$KUST"; then
+          echo "  - cerebray" >> "$KUST"
+        fi
+      - |
+        cat > {{.D}}/kustomization.yaml << 'EOF'
+        apiVersion: kustomize.config.k8s.io/v1beta1
+        kind: Kustomization
+        resources:
+          - namespace.yaml
+          - secret.yaml
+          - postgresql.yaml
+          - redis.yaml
+          - backend.yaml
+          - frontend.yaml
+          - ingress.yaml
+        EOF
+      - |
+        cat > {{.D}}/namespace.yaml << 'EOF'
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: cerebray
+        EOF
+      - |
+        cat > {{.D}}/secret.yaml << 'EOF'
+        # All cerebray credentials pulled from Vault.
+        # Run: task secrets:vault  to populate Vault before deploying.
+        apiVersion: external-secrets.io/v1beta1
+        kind: ExternalSecret
+        metadata:
+          name: cerebray-secrets
+          namespace: cerebray
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            name: {{.VAULT_SECRET_STORE}}
+            kind: ClusterSecretStore
+          target:
+            name: cerebray-secrets
+            creationPolicy: Owner
+          dataFrom:
+            - extract:
+                key: cerebray
+        EOF
+      - |
+        cat > {{.D}}/postgresql.yaml << 'EOF'
+        apiVersion: source.toolkit.fluxcd.io/v1
+        kind: HelmRepository
+        metadata:
+          name: bitnami-oci
+          namespace: cerebray
+        spec:
+          type: oci
+          interval: 1h
+          url: oci://registry-1.docker.io/bitnamicharts
+        ---
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: postgresql
+          namespace: cerebray
+        spec:
+          interval: 30m
+          chart:
+            spec:
+              chart: postgresql
+              version: ">=16.0.0 <17.0.0"
+              sourceRef:
+                kind: HelmRepository
+                name: bitnami-oci
+                namespace: cerebray
+          values:
+            image:
+              tag: "16"
+              pullPolicy: IfNotPresent
+            auth:
+              username: cerebray
+              database: cerebray
+              existingSecret: cerebray-secrets
+              secretKeys:
+                userPasswordKey: database-password
+            primary:
+              persistence:
+                enabled: true
+                size: 10Gi
+              resources:
+                requests:
+                  memory: 256Mi
+                  cpu: 100m
+                limits:
+                  memory: 512Mi
+                  cpu: 500m
+        EOF
+      - |
+        cat > {{.D}}/redis.yaml << 'EOF'
+        apiVersion: helm.toolkit.fluxcd.io/v2
+        kind: HelmRelease
+        metadata:
+          name: redis
+          namespace: cerebray
+        spec:
+          interval: 30m
+          chart:
+            spec:
+              chart: redis
+              version: ">=20.0.0 <21.0.0"
+              sourceRef:
+                kind: HelmRepository
+                name: bitnami-oci
+                namespace: cerebray
+          values:
+            image:
+              tag: latest
+              pullPolicy: Always
+            auth:
+              enabled: true
+              existingSecret: cerebray-secrets
+              existingSecretPasswordKey: redis-password
+            architecture: standalone
+            master:
+              persistence:
+                enabled: true
+                size: 2Gi
+              resources:
+                requests:
+                  memory: 128Mi
+                  cpu: 50m
+                limits:
+                  memory: 256Mi
+                  cpu: 200m
+        EOF
+      - |
+        cat > {{.D}}/backend.yaml << 'EOF'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: backend
+          namespace: cerebray
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: backend
+          template:
+            metadata:
+              labels:
+                app: backend
+            spec:
+              containers:
+                - name: backend
+                  image: {{.REGISTRY}}/cerebray-backend:latest # {"$imagepolicy": "flux-system:cerebray-backend"}
+                  imagePullPolicy: Always
+                  ports:
+                    - containerPort: 8080
+                  env:
+                    - name: ENV
+                      value: production
+                    - name: PORT
+                      value: "8080"
+                    - name: BASE_URL
+                      value: "https://{{.APP_DOMAIN}}"
+                    - name: SESSION_SECRET
+                      valueFrom:
+                        secretKeyRef:
+                          name: cerebray-secrets
+                          key: session-secret
+                    - name: DATABASE_URL
+                      valueFrom:
+                        secretKeyRef:
+                          name: cerebray-secrets
+                          key: database-url
+                    - name: REDIS_URL
+                      valueFrom:
+                        secretKeyRef:
+                          name: cerebray-secrets
+                          key: redis-url
+                    - name: ANTHROPIC_API_KEY
+                      valueFrom:
+                        secretKeyRef:
+                          name: cerebray-secrets
+                          key: anthropic-api-key
+                    - name: KEYCLOAK_CLIENT_SECRET
+                      valueFrom:
+                        secretKeyRef:
+                          name: cerebray-secrets
+                          key: keycloak-client-secret
+                  resources:
+                    requests:
+                      memory: 128Mi
+                      cpu: 50m
+                    limits:
+                      memory: 256Mi
+                      cpu: 500m
+                  readinessProbe:
+                    httpGet:
+                      path: /health
+                      port: 8080
+                    initialDelaySeconds: 5
+                    periodSeconds: 10
+                  livenessProbe:
+                    httpGet:
+                      path: /health
+                      port: 8080
+                    initialDelaySeconds: 15
+                    periodSeconds: 30
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: backend
+          namespace: cerebray
+        spec:
+          selector:
+            app: backend
+          ports:
+            - port: 8080
+              targetPort: 8080
+        EOF
+      - |
+        cat > {{.D}}/frontend.yaml << 'EOF'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: frontend
+          namespace: cerebray
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: frontend
+          template:
+            metadata:
+              labels:
+                app: frontend
+            spec:
+              containers:
+                - name: frontend
+                  image: {{.REGISTRY}}/cerebray-frontend:latest # {"$imagepolicy": "flux-system:cerebray-frontend"}
+                  imagePullPolicy: Always
+                  ports:
+                    - containerPort: 80
+                  resources:
+                    requests:
+                      memory: 32Mi
+                      cpu: 10m
+                    limits:
+                      memory: 64Mi
+                      cpu: 100m
+                  readinessProbe:
+                    httpGet:
+                      path: /
+                      port: 80
+                    initialDelaySeconds: 3
+                    periodSeconds: 10
+        ---
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: frontend
+          namespace: cerebray
+        spec:
+          selector:
+            app: frontend
+          ports:
+            - port: 80
+              targetPort: 80
+        EOF
+      - |
+        cat > {{.D}}/ingress.yaml << 'EOF'
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: cerebray
+          namespace: cerebray
+          annotations:
+            cert-manager.io/cluster-issuer: {{.CERT_ISSUER}}
+            nginx.ingress.kubernetes.io/proxy-buffering: "off"
+            nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+            nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+        spec:
+          ingressClassName: nginx
+          tls:
+            - hosts:
+                - {{.APP_DOMAIN}}
+              secretName: cerebray-tls
+          rules:
+            - host: {{.APP_DOMAIN}}
+              http:
+                paths:
+                  - path: /api
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: backend
+                        port:
+                          number: 8080
+                  - path: /auth
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: backend
+                        port:
+                          number: 8080
+                  - path: /health
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: backend
+                        port:
+                          number: 8080
+                  - path: /
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: frontend
+                        port:
+                          number: 80
+        EOF
+      - echo "Manifests written to {{.D}}"
+
+  flux:reconcile:
+    desc: Force Flux to reconcile all Kustomizations immediately
+    cmds:
+      - flux reconcile kustomization flux-system --with-source
+
+  flux:status:
+    desc: Show the status of all Flux Kustomizations and HelmReleases
+    cmds:
+      - flux get kustomizations
+      - flux get helmreleases -A
+
+  k8s:pods:
+    desc: List all pods in the cerebray namespace
+    cmds:
+      - kubectl get pods -n cerebray
+
+  k8s:logs:backend:
+    desc: Tail backend pod logs in the cerebray namespace
+    cmds:
+      - kubectl logs -n cerebray -l app=backend -f
+
+  k8s:logs:frontend:
+    desc: Tail frontend pod logs in the cerebray namespace
+    cmds:
+      - kubectl logs -n cerebray -l app=frontend -f

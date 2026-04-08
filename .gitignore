@@ -1,0 +1,52 @@
+# Environment variables - never commit secrets
+.env
+.env.local
+.env.*.local
+deploy.env
+backend/.env
+
+# Go
+backend/bin/
+backend/tmp/
+*.exe
+*.test
+*.out
+vendor/
+
+# sqlc generated code is committed but worth tracking
+# backend/db/sqlc/ is committed
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# Dependency lock files
+yarn.lock
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+
+# Kubernetes / secrets
+clusters/**/*.key
+kubeconfig
+*.kubeconfig
+
+# Logs
+*.log
+
+# Task runner checksum cache
+.task/
+
+# Test output
+test-results/
+playwright-report/
