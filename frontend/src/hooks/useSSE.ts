@@ -50,7 +50,7 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null)
   const cancelRef = useRef<(() => void) | null>(null)
 
-  const send = useCallback((conversationId: number, content: string) => {
+  const send = useCallback((conversationId: number, content: string, onComplete?: (text: string) => void) => {
     setStreaming(true)
     setStreamedText('')
     setSuggestions([])
@@ -66,6 +66,7 @@ export function useChat() {
       onDone: () => {
         setStreaming(false)
         setSuggestions(parseZettelSuggestions(accumulated))
+        onComplete?.(accumulated)
       },
       onError: (err) => {
         setStreaming(false)

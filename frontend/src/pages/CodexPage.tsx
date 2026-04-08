@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listNotes, searchNotes, archiveNote } from '../api/notes'
 import type { Note, NoteType } from '../types'
 import { NoteCard, Archive } from '../components/notes/NoteCard'
@@ -21,20 +21,26 @@ export function CodexPage() {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const fetchIdRef = useRef(0)
 
-  const load = useCallback(() => {
-    setLoading(true)
+  useEffect(() => {
+    const id = ++fetchIdRef.current
     const promise = query
       ? searchNotes(query)
       : listNotes({ status: 'active', type: typeFilter || undefined })
 
-    promise
-      .then(setNotes)
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    promise.then((data) => {
+      if (fetchIdRef.current === id) {
+        setNotes(data)
+        setLoading(false)
+      }
+    }).catch(() => {
+      if (fetchIdRef.current === id) {
+        setNotes([])
+        setLoading(false)
+      }
+    })
   }, [query, typeFilter])
-
-  useEffect(load, [load])
 
   const handleArchive = async (id: number) => {
     await archiveNote(id).catch(() => {})

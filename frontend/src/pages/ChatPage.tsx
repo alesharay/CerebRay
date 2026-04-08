@@ -79,27 +79,20 @@ export function ChatPage() {
     }
     setMessages((prev) => [...prev, userMsg])
 
-    send(activeId, content)
-  }
-
-  // When streaming finishes, add the assistant message to the list
-  const prevStreamingRef = useRef(streaming)
-  useEffect(() => {
-    if (prevStreamingRef.current && !streaming && streamedText) {
+    send(activeId, content, (fullText) => {
       const assistantMsg: Message = {
         id: Date.now() + 1,
-        conversation_id: activeId || 0,
+        conversation_id: activeId,
         role: 'assistant',
-        content: streamedText,
+        content: fullText,
         input_tokens: 0,
         output_tokens: 0,
         model: '',
         created_at: new Date().toISOString(),
       }
       setMessages((prev) => [...prev, assistantMsg])
-    }
-    prevStreamingRef.current = streaming
-  }, [streaming, streamedText, activeId])
+    })
+  }
 
   const handleSaveNote = async (suggestion: ZettelSuggestion) => {
     try {
