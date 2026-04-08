@@ -22,17 +22,17 @@
 ### 2. Git Setup
 
 - [x] Initialize git repo
-- [~] Initial commit with project scaffold
+- [x] Initial commit with project scaffold
 - [x] Set up Gitea and GitHub remotes
 - [x] CI pipeline (Gitea Actions: lint, test, build on push)
 
 ### 3. Database
 
-- [ ] PostgreSQL running via docker-compose.dev.yml
-- [ ] golang-migrate wired up, first migration created
-- [ ] sqlc configured, initial queries for users and notes
-- [ ] Schema defined: users, notes, tags/note_tags, connections, conversations/messages, glossary_terms, ai_usage_log
-- [ ] Full-text search via tsvector/tsquery on note title and body
+- [x] PostgreSQL running via docker-compose.dev.yml
+- [x] golang-migrate wired up, all 7 migrations created and applied
+- [x] sqlc configured, queries for all tables (users, notes, tags, connections, conversations, glossary, ai_usage)
+- [x] Schema defined: users, notes, tags/note_tags, connections, conversations/messages, glossary_terms, ai_usage_log
+- [x] Full-text search via tsvector/tsquery on note title and body
 - [ ] Seed script for local development
 
 ### 4. Auth (Keycloak OIDC + Local Fallback)

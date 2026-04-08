@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS notes;
+DROP TYPE IF EXISTS note_tlp;
+DROP TYPE IF EXISTS note_status;
+DROP TYPE IF EXISTS note_type;
