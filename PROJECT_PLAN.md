@@ -74,16 +74,16 @@
 
 ### 8. Frontend Pages
 
-- [ ] Landing page (intro + Keycloak login button)
-- [ ] Dashboard (stat cards for Inbox/Echoes/Codex, quick capture, recent activity)
-- [ ] Chat / Capture page (AI conversation with Zettel suggestion cards)
-- [ ] Inbox page (fleeting notes with promote/sleep/archive actions)
-- [ ] Echoes page (sleeping notes with Rise/Rest actions)
-- [ ] Codex page (main library with search, filters, card/list view)
-- [ ] Note Detail / Editor page (all Codex fields, connection builder, tags)
-- [ ] Index / MOC page (hierarchical list + react-force-graph visualization)
-- [ ] Glossary page (alphabetical terms with definitions)
-- [ ] Settings page (profile, AI usage, display preferences)
+- [x] Landing page (intro + Keycloak login button)
+- [x] Dashboard (stat cards for Inbox/Echoes/Codex, quick capture, recent activity)
+- [x] Chat / Capture page (AI conversation with Zettel suggestion cards)
+- [x] Inbox page (fleeting notes with promote/sleep/archive actions)
+- [x] Echoes page (sleeping notes with Rise/Rest actions)
+- [x] Codex page (main library with search, filters, card/list view)
+- [x] Note Detail / Editor page (all Codex fields, connection builder, tags)
+- [~] Index / MOC page (list view done, graph visualization pending)
+- [x] Glossary page (alphabetical terms with definitions)
+- [x] Settings page (profile, AI usage, display preferences)
 
 ### 9. Search and Connections
 
