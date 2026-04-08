@@ -63,9 +63,22 @@ RETURNING *;
 DELETE FROM notes WHERE id = $1 AND user_id = $2;
 
 -- name: SearchNotes :many
-SELECT * FROM notes
+SELECT *,
+    ts_headline('english', title || ' - ' || summary || ' ' || body,
+        plainto_tsquery('english', $2),
+        'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
+    ) as snippet
+FROM notes
 WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2)
 ORDER BY ts_rank(search_vector, plainto_tsquery('english', $2)) DESC
+LIMIT $3 OFFSET $4;
+
+-- name: ListNotesByTag :many
+SELECT n.* FROM notes n
+JOIN note_tags nt ON nt.note_id = n.id
+JOIN tags t ON t.id = nt.tag_id
+WHERE n.user_id = $1 AND t.name = $2
+ORDER BY n.created_at DESC
 LIMIT $3 OFFSET $4;
 
 -- name: CountNotesByStatus :many

@@ -228,6 +228,68 @@ func (q *Queries) ListNotesByStatus(ctx context.Context, arg ListNotesByStatusPa
 	return items, nil
 }
 
+const listNotesByTag = `-- name: ListNotesByTag :many
+SELECT n.id, n.user_id, n.title, n.summary, n.laymans_terms, n.analogy, n.core_idea, n.body, n.components, n.why_it_matters, n.examples, n.templates, n.additional, n.note_type, n.status, n.tlp, n.source_chat_id, n.created_at, n.updated_at, n.search_vector FROM notes n
+JOIN note_tags nt ON nt.note_id = n.id
+JOIN tags t ON t.id = nt.tag_id
+WHERE n.user_id = $1 AND t.name = $2
+ORDER BY n.created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListNotesByTagParams struct {
+	UserID int64  `json:"user_id"`
+	Name   string `json:"name"`
+	Limit  int32  `json:"limit"`
+	Offset int32  `json:"offset"`
+}
+
+func (q *Queries) ListNotesByTag(ctx context.Context, arg ListNotesByTagParams) ([]Note, error) {
+	rows, err := q.db.Query(ctx, listNotesByTag,
+		arg.UserID,
+		arg.Name,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Note{}
+	for rows.Next() {
+		var i Note
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Summary,
+			&i.LaymansTerms,
+			&i.Analogy,
+			&i.CoreIdea,
+			&i.Body,
+			&i.Components,
+			&i.WhyItMatters,
+			&i.Examples,
+			&i.Templates,
+			&i.Additional,
+			&i.NoteType,
+			&i.Status,
+			&i.Tlp,
+			&i.SourceChatID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SearchVector,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNotesByUser = `-- name: ListNotesByUser :many
 SELECT n.id, n.user_id, n.title, n.summary, n.laymans_terms, n.analogy, n.core_idea, n.body, n.components, n.why_it_matters, n.examples, n.templates, n.additional, n.note_type, n.status, n.tlp, n.source_chat_id, n.created_at, n.updated_at, n.search_vector,
     array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL) as tag_names,
@@ -374,7 +436,12 @@ func (q *Queries) RecentNotes(ctx context.Context, arg RecentNotesParams) ([]Not
 }
 
 const searchNotes = `-- name: SearchNotes :many
-SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector FROM notes
+SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector,
+    ts_headline('english', title || ' - ' || summary || ' ' || body,
+        plainto_tsquery('english', $2),
+        'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
+    ) as snippet
+FROM notes
 WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2)
 ORDER BY ts_rank(search_vector, plainto_tsquery('english', $2)) DESC
 LIMIT $3 OFFSET $4
@@ -387,7 +454,31 @@ type SearchNotesParams struct {
 	Offset         int32  `json:"offset"`
 }
 
-func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Note, error) {
+type SearchNotesRow struct {
+	ID           int64       `json:"id"`
+	UserID       int64       `json:"user_id"`
+	Title        string      `json:"title"`
+	Summary      string      `json:"summary"`
+	LaymansTerms string      `json:"laymans_terms"`
+	Analogy      string      `json:"analogy"`
+	CoreIdea     string      `json:"core_idea"`
+	Body         string      `json:"body"`
+	Components   string      `json:"components"`
+	WhyItMatters string      `json:"why_it_matters"`
+	Examples     string      `json:"examples"`
+	Templates    string      `json:"templates"`
+	Additional   string      `json:"additional"`
+	NoteType     NoteType    `json:"note_type"`
+	Status       NoteStatus  `json:"status"`
+	Tlp          NoteTlp     `json:"tlp"`
+	SourceChatID *int64      `json:"source_chat_id"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	SearchVector interface{} `json:"search_vector"`
+	Snippet      []byte      `json:"snippet"`
+}
+
+func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]SearchNotesRow, error) {
 	rows, err := q.db.Query(ctx, searchNotes,
 		arg.UserID,
 		arg.PlaintoTsquery,
@@ -398,9 +489,9 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Not
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Note{}
+	items := []SearchNotesRow{}
 	for rows.Next() {
-		var i Note
+		var i SearchNotesRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -422,6 +513,7 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Not
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SearchVector,
+			&i.Snippet,
 		); err != nil {
 			return nil, err
 		}

@@ -42,10 +42,11 @@ interface ActionButton {
 
 interface NoteCardProps {
   note: Note
+  snippet?: string
   actions?: ActionButton[]
 }
 
-export function NoteCard({ note, actions }: NoteCardProps) {
+export function NoteCard({ note, snippet, actions }: NoteCardProps) {
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700">
       <div className="flex items-start justify-between gap-3">
@@ -56,9 +57,14 @@ export function NoteCard({ note, actions }: NoteCardProps) {
               {note.note_type}
             </span>
           </div>
-          {note.summary && (
+          {snippet ? (
+            <p
+              className="mt-1 line-clamp-2 text-sm text-zinc-400 [&>mark]:bg-amber-700/40 [&>mark]:text-amber-200 [&>mark]:rounded [&>mark]:px-0.5"
+              dangerouslySetInnerHTML={{ __html: snippet }}
+            />
+          ) : note.summary ? (
             <p className="mt-1 line-clamp-2 text-sm text-zinc-400">{note.summary}</p>
-          )}
+          ) : null}
           <div className="mt-2 flex items-center gap-3">
             <span className={cn('rounded px-2 py-0.5 text-xs font-medium', statusStyles[note.status])}>
               {note.status}

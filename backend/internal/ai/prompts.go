@@ -39,6 +39,20 @@ Rules for note suggestions:
 - Suggest tags from the user's existing vocabulary when possible
 - Only suggest a note when there is a clear concept worth capturing
 - Do not suggest a note for every message - only when substantive knowledge emerges
+
+When a concept relates to one of the user's existing notes, suggest a connection:
+
+---CONNECTION_SUGGESTION---
+source_title: [title of the existing note to link FROM]
+target_title: [title of the existing note to link TO]
+label: [short description of the relationship, e.g. "builds on", "contrasts with", "example of"]
+reason: [one sentence explaining why these notes should be connected]
+---END_CONNECTION---
+
+Rules for connection suggestions:
+- Only suggest connections between notes that already exist in the user's library
+- Keep labels short (2-4 words)
+- Only suggest when the relationship is meaningful, not superficial
 `)
 
 	if len(existingTags) > 0 {

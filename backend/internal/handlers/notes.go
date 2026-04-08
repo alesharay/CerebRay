@@ -22,6 +22,22 @@ func (h *NoteHandlers) List(w http.ResponseWriter, r *http.Request) {
 	limit := QueryInt(r, "limit", 50)
 	offset := QueryInt(r, "offset", 0)
 	status := r.URL.Query().Get("status")
+	tag := r.URL.Query().Get("tag")
+
+	if tag != "" {
+		notes, err := h.queries.ListNotesByTag(r.Context(), sqlc.ListNotesByTagParams{
+			UserID: userID,
+			Name:   tag,
+			Limit:  int32(limit),
+			Offset: int32(offset),
+		})
+		if err != nil {
+			Error(w, http.StatusInternalServerError, "failed to list notes")
+			return
+		}
+		JSON(w, http.StatusOK, notes)
+		return
+	}
 
 	if status != "" {
 		notes, err := h.queries.ListNotesByStatus(r.Context(), sqlc.ListNotesByStatusParams{

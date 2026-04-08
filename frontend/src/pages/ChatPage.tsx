@@ -4,7 +4,7 @@ import { createNote } from '../api/notes'
 import { useChat } from '../hooks/useSSE'
 import type { Conversation, Message, ZettelSuggestion } from '../types'
 import { cn } from '../lib/utils'
-import { Plus, Trash2, Send, Square, Sparkles, BookOpen, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Send, Square, Sparkles, BookOpen, Link2, Loader2 } from 'lucide-react'
 
 export function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -14,7 +14,7 @@ export function ChatPage() {
   const [creating, setCreating] = useState(false)
   const [loadingConvo, setLoadingConvo] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const { streaming, streamedText, suggestions, error, send, cancel } = useChat()
+  const { streaming, streamedText, suggestions, connectionSuggestions, error, send, cancel } = useChat()
 
   // Load conversation list
   useEffect(() => {
@@ -229,6 +229,31 @@ export function ChatPage() {
                         <BookOpen className="h-3 w-3" />
                         Save to Inbox
                       </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Connection suggestions */}
+              {connectionSuggestions.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
+                    <Link2 className="h-3.5 w-3.5" />
+                    Suggested connections
+                  </div>
+                  {connectionSuggestions.map((cs, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-zinc-700 bg-zinc-900 p-4"
+                    >
+                      <div className="mb-1 flex items-center gap-2 text-sm">
+                        <span className="font-medium">{cs.source_title}</span>
+                        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-500">{cs.label}</span>
+                        <span className="font-medium">{cs.target_title}</span>
+                      </div>
+                      {cs.reason && (
+                        <p className="text-sm text-zinc-400">{cs.reason}</p>
+                      )}
                     </div>
                   ))}
                 </div>

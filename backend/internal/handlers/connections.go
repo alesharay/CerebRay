@@ -70,6 +70,18 @@ func (h *ConnectionHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type graphNode struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	Type  string `json:"type"`
+}
+
+type graphEdge struct {
+	Source int64  `json:"source"`
+	Target int64  `json:"target"`
+	Label  string `json:"label"`
+}
+
 func (h *ConnectionHandlers) GraphData(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r.Context())
 
@@ -78,5 +90,23 @@ func (h *ConnectionHandlers) GraphData(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "failed to get graph data")
 		return
 	}
-	JSON(w, http.StatusOK, data)
+
+	nodeMap := map[int64]graphNode{}
+	edges := make([]graphEdge, 0, len(data))
+
+	for _, row := range data {
+		nodeMap[row.SourceID] = graphNode{ID: row.SourceID, Title: row.SourceTitle, Type: string(row.SourceType)}
+		nodeMap[row.TargetID] = graphNode{ID: row.TargetID, Title: row.TargetTitle, Type: string(row.TargetType)}
+		edges = append(edges, graphEdge{Source: row.SourceID, Target: row.TargetID, Label: row.Label})
+	}
+
+	nodes := make([]graphNode, 0, len(nodeMap))
+	for _, n := range nodeMap {
+		nodes = append(nodes, n)
+	}
+
+	JSON(w, http.StatusOK, map[string]any{
+		"nodes": nodes,
+		"edges": edges,
+	})
 }

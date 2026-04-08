@@ -1,29 +1,29 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getNote, updateNote, deleteNote, promoteNote, sleepNote, archiveNote } from '../api/notes'
-import { listConnectionsForNote } from '../api/connections'
+import { getNote, updateNote, deleteNote, promoteNote, sleepNote, archiveNote, searchNotes } from '../api/notes'
+import { listConnectionsForNote, createConnection } from '../api/connections'
 import { addTagToNote } from '../api/tags'
 import type { Note, Connection, NoteType, NoteTLP } from '../types'
 import { cn } from '../lib/utils'
 import {
   ArrowLeft, Save, Trash2, ArrowUpCircle, Moon, Archive,
-  Link2, Plus, Loader2,
+  Link2, Plus, Loader2, ArrowRight, ArrowDownLeft, Search,
 } from 'lucide-react'
 
 const noteTypes: NoteType[] = ['concept', 'theory', 'insight', 'quote', 'reference', 'question', 'structure', 'guide']
 const tlpOptions: NoteTLP[] = ['clear', 'green', 'amber', 'red']
 
-const sections: { key: keyof Note; label: string; multiline?: boolean }[] = [
-  { key: 'summary', label: 'Summary', multiline: true },
-  { key: 'core_idea', label: 'Core idea', multiline: true },
-  { key: 'laymans_terms', label: "Layman's terms", multiline: true },
-  { key: 'analogy', label: 'Analogy', multiline: true },
-  { key: 'body', label: 'Body', multiline: true },
-  { key: 'components', label: 'Components', multiline: true },
-  { key: 'why_it_matters', label: 'Why it matters', multiline: true },
-  { key: 'examples', label: 'Examples', multiline: true },
-  { key: 'templates', label: 'Templates', multiline: true },
-  { key: 'additional', label: 'Additional', multiline: true },
+const sections: { key: keyof Note; label: string }[] = [
+  { key: 'summary', label: 'Summary' },
+  { key: 'core_idea', label: 'Core idea' },
+  { key: 'laymans_terms', label: "Layman's terms" },
+  { key: 'analogy', label: 'Analogy' },
+  { key: 'body', label: 'Body' },
+  { key: 'components', label: 'Components' },
+  { key: 'why_it_matters', label: 'Why it matters' },
+  { key: 'examples', label: 'Examples' },
+  { key: 'templates', label: 'Templates' },
+  { key: 'additional', label: 'Additional' },
 ]
 
 export function NoteDetailPage() {
@@ -35,6 +35,12 @@ export function NoteDetailPage() {
   const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<Partial<Note>>({})
   const [newTag, setNewTag] = useState('')
+
+  // Connection builder state
+  const [linkQuery, setLinkQuery] = useState('')
+  const [linkResults, setLinkResults] = useState<Note[]>([])
+  const [linkLabel, setLinkLabel] = useState('')
+  const [showLinkBuilder, setShowLinkBuilder] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -50,6 +56,20 @@ export function NoteDetailPage() {
       navigate('/codex')
     }).finally(() => setLoading(false))
   }, [id, navigate])
+
+  // Search for notes to link (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!linkQuery.trim()) {
+        setLinkResults([])
+        return
+      }
+      searchNotes(linkQuery, 5).then((results) => {
+        setLinkResults(results.filter((r) => r.id !== note?.id))
+      }).catch(() => {})
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [linkQuery, note?.id])
 
   const handleChange = (key: string, value: string) => {
     setDraft((prev) => ({ ...prev, [key]: value }))
@@ -87,12 +107,23 @@ export function NoteDetailPage() {
     if (!note || !newTag.trim()) return
     await addTagToNote(note.id, newTag.trim()).catch(() => {})
     setNewTag('')
-    // Reload note to get updated tags
     const updated = await getNote(note.id).catch(() => null)
     if (updated) {
       setNote(updated)
       setDraft(updated)
     }
+  }
+
+  const handleCreateConnection = async (targetId: number) => {
+    if (!note) return
+    await createConnection(note.id, targetId, linkLabel.trim()).catch(() => {})
+    setLinkQuery('')
+    setLinkLabel('')
+    setLinkResults([])
+    setShowLinkBuilder(false)
+    // Reload connections
+    const conns = await listConnectionsForNote(note.id).catch(() => [])
+    setConnections(conns)
   }
 
   if (loading) {
@@ -104,6 +135,9 @@ export function NoteDetailPage() {
   }
 
   if (!note) return null
+
+  const outgoing = connections.filter((c) => c.direction === 'outgoing')
+  const incoming = connections.filter((c) => c.direction === 'incoming')
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -219,28 +253,108 @@ export function NoteDetailPage() {
       </div>
 
       {/* Connections */}
-      {connections.length > 0 && (
-        <div>
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-zinc-400">
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-400">
             <Link2 className="h-4 w-4" />
             Connections ({connections.length})
           </h3>
-          <div className="space-y-1">
-            {connections.map((conn) => (
-              <Link
-                key={conn.id}
-                to={`/codex/${conn.connected_id}`}
-                className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm transition-colors hover:border-zinc-700"
-              >
-                <span className="text-zinc-100">{conn.connected_title}</span>
-                {conn.label && (
-                  <span className="text-xs text-zinc-500">{conn.label}</span>
-                )}
-              </Link>
-            ))}
-          </div>
+          <button
+            onClick={() => setShowLinkBuilder(!showLinkBuilder)}
+            className="flex items-center gap-1 rounded bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-zinc-700"
+          >
+            <Plus className="h-3 w-3" />
+            Link note
+          </button>
         </div>
-      )}
+
+        {/* Connection builder */}
+        {showLinkBuilder && (
+          <div className="mb-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+              <input
+                type="text"
+                value={linkQuery}
+                onChange={(e) => setLinkQuery(e.target.value)}
+                placeholder="Search for a note to link..."
+                className="w-full rounded border border-zinc-700 bg-zinc-950 py-1.5 pl-8 pr-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
+                autoFocus
+              />
+            </div>
+            <input
+              type="text"
+              value={linkLabel}
+              onChange={(e) => setLinkLabel(e.target.value)}
+              placeholder="Relationship label (optional, e.g. 'builds on')"
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-500 focus:outline-none"
+            />
+            {linkResults.length > 0 && (
+              <div className="space-y-1">
+                {linkResults.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => handleCreateConnection(r.id)}
+                    className="flex w-full items-center gap-2 rounded bg-zinc-800 px-3 py-2 text-left text-sm transition-colors hover:bg-zinc-700"
+                  >
+                    <Link2 className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                    <span className="truncate text-zinc-200">{r.title}</span>
+                    <span className="ml-auto shrink-0 text-xs text-zinc-500">{r.note_type}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Outgoing links */}
+        {outgoing.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-zinc-500">
+              <ArrowRight className="h-3 w-3" />
+              Links from this note
+            </div>
+            <div className="space-y-1">
+              {outgoing.map((conn) => (
+                <Link
+                  key={conn.id}
+                  to={`/codex/${conn.connected_id}`}
+                  className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm transition-colors hover:border-zinc-700"
+                >
+                  <span className="text-zinc-100">{conn.connected_title}</span>
+                  {conn.label && <span className="text-xs text-zinc-500">{conn.label}</span>}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Backlinks */}
+        {incoming.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1 flex items-center gap-1.5 text-xs text-zinc-500">
+              <ArrowDownLeft className="h-3 w-3" />
+              Backlinks
+            </div>
+            <div className="space-y-1">
+              {incoming.map((conn) => (
+                <Link
+                  key={conn.id}
+                  to={`/codex/${conn.connected_id}`}
+                  className="flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm transition-colors hover:border-zinc-700"
+                >
+                  <span className="text-zinc-100">{conn.connected_title}</span>
+                  {conn.label && <span className="text-xs text-zinc-500">{conn.label}</span>}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {connections.length === 0 && !showLinkBuilder && (
+          <p className="text-sm text-zinc-600">No connections yet.</p>
+        )}
+      </div>
 
       {/* Action bar */}
       <div className="flex items-center gap-3 border-t border-zinc-800 pt-4">

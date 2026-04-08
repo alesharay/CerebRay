@@ -43,7 +43,19 @@ export interface Connection {
   label: string
   connected_id: number
   connected_title: string
+  direction: 'outgoing' | 'incoming'
   created_at: string
+}
+
+export interface SearchResult extends Note {
+  snippet: string
+}
+
+export interface ConnectionSuggestion {
+  source_title: string
+  target_title: string
+  label: string
+  reason: string
 }
 
 export interface Tag {

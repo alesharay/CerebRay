@@ -81,17 +81,17 @@
 - [x] Echoes page (sleeping notes with Rise/Rest actions)
 - [x] Codex page (main library with search, filters, card/list view)
 - [x] Note Detail / Editor page (all Codex fields, connection builder, tags)
-- [~] Index / MOC page (list view done, graph visualization pending)
+- [x] Index / MOC page (list view + d3-force graph with toggle)
 - [x] Glossary page (alphabetical terms with definitions)
 - [x] Settings page (profile, AI usage, display preferences)
 
 ### 9. Search and Connections
 
-- [ ] Full-text search with highlighted results
-- [ ] Tag filtering and combination
-- [ ] Backlink display on note pages
-- [ ] Forward link suggestions from AI
-- [ ] Graph visualization of note connections (D3 or similar)
+- [x] Full-text search with highlighted results (ts_headline snippets)
+- [x] Tag filtering and combination (tag chips on Codex page)
+- [x] Backlink display on note pages (outgoing/incoming split)
+- [x] Forward link suggestions from AI (CONNECTION_SUGGESTION blocks)
+- [x] Graph visualization of note connections (d3-force interactive graph)
 
 ### 10. Testing
 

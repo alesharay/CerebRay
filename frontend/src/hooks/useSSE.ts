@@ -1,26 +1,14 @@
 import { useCallback, useRef, useState } from 'react'
 import { sendMessage, type StreamCallbacks } from '../api/chat'
-import type { ZettelSuggestion } from '../types'
+import type { ZettelSuggestion, ConnectionSuggestion } from '../types'
 
-// Parse Zettel suggestions from AI response text
 function parseZettelSuggestions(text: string): ZettelSuggestion[] {
   const suggestions: ZettelSuggestion[] = []
   const regex = /---ZETTEL_SUGGESTION---([\s\S]*?)---END_ZETTEL---/g
   let match
 
   while ((match = regex.exec(text)) !== null) {
-    const block = match[1]
-    const fields: Record<string, string> = {}
-
-    for (const line of block.split('\n')) {
-      const colonIdx = line.indexOf(':')
-      if (colonIdx === -1) continue
-      const key = line.slice(0, colonIdx).trim()
-      const value = line.slice(colonIdx + 1).trim()
-      if (key && value) {
-        fields[key] = value
-      }
-    }
+    const fields = parseBlock(match[1])
 
     if (fields.title) {
       suggestions.push({
@@ -43,10 +31,46 @@ function parseZettelSuggestions(text: string): ZettelSuggestion[] {
   return suggestions
 }
 
+function parseConnectionSuggestions(text: string): ConnectionSuggestion[] {
+  const suggestions: ConnectionSuggestion[] = []
+  const regex = /---CONNECTION_SUGGESTION---([\s\S]*?)---END_CONNECTION---/g
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    const fields = parseBlock(match[1])
+
+    if (fields.source_title && fields.target_title) {
+      suggestions.push({
+        source_title: fields.source_title,
+        target_title: fields.target_title,
+        label: fields.label || '',
+        reason: fields.reason || '',
+      })
+    }
+  }
+
+  return suggestions
+}
+
+function parseBlock(block: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  for (const line of block.split('\n')) {
+    const colonIdx = line.indexOf(':')
+    if (colonIdx === -1) continue
+    const key = line.slice(0, colonIdx).trim()
+    const value = line.slice(colonIdx + 1).trim()
+    if (key && value) {
+      fields[key] = value
+    }
+  }
+  return fields
+}
+
 export function useChat() {
   const [streaming, setStreaming] = useState(false)
   const [streamedText, setStreamedText] = useState('')
   const [suggestions, setSuggestions] = useState<ZettelSuggestion[]>([])
+  const [connectionSuggestions, setConnectionSuggestions] = useState<ConnectionSuggestion[]>([])
   const [error, setError] = useState<string | null>(null)
   const cancelRef = useRef<(() => void) | null>(null)
 
@@ -54,6 +78,7 @@ export function useChat() {
     setStreaming(true)
     setStreamedText('')
     setSuggestions([])
+    setConnectionSuggestions([])
     setError(null)
 
     let accumulated = ''
@@ -66,6 +91,7 @@ export function useChat() {
       onDone: () => {
         setStreaming(false)
         setSuggestions(parseZettelSuggestions(accumulated))
+        setConnectionSuggestions(parseConnectionSuggestions(accumulated))
         onComplete?.(accumulated)
       },
       onError: (err) => {
@@ -82,5 +108,5 @@ export function useChat() {
     setStreaming(false)
   }, [])
 
-  return { streaming, streamedText, suggestions, error, send, cancel }
+  return { streaming, streamedText, suggestions, connectionSuggestions, error, send, cancel }
 }

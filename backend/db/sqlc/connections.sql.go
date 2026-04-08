@@ -95,7 +95,8 @@ func (q *Queries) GetGraphData(ctx context.Context, userID int64) ([]GetGraphDat
 const listConnectionsForNote = `-- name: ListConnectionsForNote :many
 SELECT c.id, c.source_id, c.target_id, c.label, c.created_at,
     CASE WHEN c.source_id = $1 THEN n2.title ELSE n1.title END as connected_title,
-    CASE WHEN c.source_id = $1 THEN c.target_id ELSE c.source_id END as connected_id
+    CASE WHEN c.source_id = $1 THEN c.target_id ELSE c.source_id END as connected_id,
+    CASE WHEN c.source_id = $1 THEN 'outgoing' ELSE 'incoming' END as direction
 FROM connections c
 JOIN notes n1 ON n1.id = c.source_id
 JOIN notes n2 ON n2.id = c.target_id
@@ -110,6 +111,7 @@ type ListConnectionsForNoteRow struct {
 	CreatedAt      time.Time   `json:"created_at"`
 	ConnectedTitle interface{} `json:"connected_title"`
 	ConnectedID    interface{} `json:"connected_id"`
+	Direction      string      `json:"direction"`
 }
 
 func (q *Queries) ListConnectionsForNote(ctx context.Context, sourceID int64) ([]ListConnectionsForNoteRow, error) {
@@ -129,6 +131,7 @@ func (q *Queries) ListConnectionsForNote(ctx context.Context, sourceID int64) ([
 			&i.CreatedAt,
 			&i.ConnectedTitle,
 			&i.ConnectedID,
+			&i.Direction,
 		); err != nil {
 			return nil, err
 		}

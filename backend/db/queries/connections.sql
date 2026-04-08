@@ -1,7 +1,8 @@
 -- name: ListConnectionsForNote :many
 SELECT c.*,
     CASE WHEN c.source_id = $1 THEN n2.title ELSE n1.title END as connected_title,
-    CASE WHEN c.source_id = $1 THEN c.target_id ELSE c.source_id END as connected_id
+    CASE WHEN c.source_id = $1 THEN c.target_id ELSE c.source_id END as connected_id,
+    CASE WHEN c.source_id = $1 THEN 'outgoing' ELSE 'incoming' END as direction
 FROM connections c
 JOIN notes n1 ON n1.id = c.source_id
 JOIN notes n2 ON n2.id = c.target_id
