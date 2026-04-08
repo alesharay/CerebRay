@@ -16,6 +16,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/aray/cerebray/backend/db/sqlc"
+	"github.com/aray/cerebray/backend/internal/ai"
 	"github.com/aray/cerebray/backend/internal/auth"
 	"github.com/aray/cerebray/backend/internal/config"
 	"github.com/aray/cerebray/backend/internal/handlers"
@@ -125,6 +126,15 @@ func main() {
 		LocalName:    cfg.LocalUserName,
 	})
 
+	// AI provider (conditional on config)
+	var aiProvider ai.Provider
+	if cfg.AIEnabled && cfg.AnthropicAPIKey != "" {
+		aiProvider = ai.NewAnthropicProvider(cfg.AnthropicAPIKey, cfg.AIModel)
+		log.Info().Str("model", cfg.AIModel).Msg("anthropic AI provider enabled")
+	} else {
+		log.Warn().Msg("AI provider disabled (no API key or AI_ENABLED=false)")
+	}
+
 	// Handlers
 	noteHandlers := handlers.NewNoteHandlers(queries)
 	tagHandlers := handlers.NewTagHandlers(queries)
@@ -132,6 +142,7 @@ func main() {
 	dashHandlers := handlers.NewDashboardHandlers(queries)
 	glossaryHandlers := handlers.NewGlossaryHandlers(queries)
 	convoHandlers := handlers.NewConversationHandlers(queries)
+	chatHandlers := handlers.NewChatHandlers(queries, aiProvider)
 
 	// Router
 	router := buildRouter(RouterDeps{
@@ -143,6 +154,7 @@ func main() {
 		Dashboard:     dashHandlers,
 		Glossary:      glossaryHandlers,
 		Conversations: convoHandlers,
+		Chat:          chatHandlers,
 		AllowOrigin:   cfg.BaseURL,
 	})
 

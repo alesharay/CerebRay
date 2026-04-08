@@ -56,21 +56,21 @@
 
 ### 6. AI Integration
 
-- [ ] Anthropic Claude API client with streaming (SSE)
-- [ ] Chat endpoint (/api/chat) that streams responses
-- [ ] System prompt for Zettelkasten formatting
-- [ ] Token budget tracking per user per month
-- [ ] Conversation history stored in database
+- [x] Anthropic Claude API client with streaming (SSE)
+- [x] Chat endpoint (POST /conversations/:id/messages) that streams responses
+- [x] System prompt for Zettelkasten formatting with ZETTEL_SUGGESTION blocks
+- [x] Token budget tracking per user per month (GET /settings/usage)
+- [x] Conversation history stored in database
 - [ ] "Extract note" action from chat messages
 
 ### 7. Frontend Foundation
 
-- [ ] Vite + React 19 + TypeScript scaffold
-- [ ] Tailwind CSS + shadcn/ui component library
-- [ ] React Router with protected routes
-- [ ] Zustand stores (auth, notes, chat)
-- [ ] HTTP client layer with auth interceptor
-- [ ] Layout components (sidebar, header, main content area)
+- [x] Vite + React 19 + TypeScript scaffold
+- [x] Tailwind CSS + shadcn/ui utilities (cn, lucide-react)
+- [x] React Router with protected routes
+- [x] Zustand stores (auth)
+- [x] HTTP client layer with auth redirect on 401
+- [x] Layout components (Sidebar, AppLayout with Outlet)
 
 ### 8. Frontend Pages
 

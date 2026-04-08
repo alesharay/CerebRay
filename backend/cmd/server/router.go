@@ -20,6 +20,7 @@ type RouterDeps struct {
 	Dashboard     *handlers.DashboardHandlers
 	Glossary      *handlers.GlossaryHandlers
 	Conversations *handlers.ConversationHandlers
+	Chat          *handlers.ChatHandlers
 	AllowOrigin   string
 }
 
@@ -90,8 +91,13 @@ func buildRouter(deps RouterDeps) http.Handler {
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", deps.Conversations.Get)
 				r.Delete("/", deps.Conversations.Delete)
-				// POST /{id}/messages will be added in Phase 6 (AI)
+				r.Post("/messages", deps.Chat.SendMessage)
 			})
+		})
+
+		// Settings
+		r.Route("/settings", func(r chi.Router) {
+			r.Get("/usage", deps.Chat.GetUsage)
 		})
 
 		// Glossary
