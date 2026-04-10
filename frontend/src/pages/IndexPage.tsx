@@ -38,15 +38,6 @@ function ForceGraph({ data }: { data: GraphData }) {
 
     const g = svg.append('g')
 
-    // Zoom
-    svg.call(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (select(svgRef.current) as any).call.bind(
-        svg,
-        // Simple pan via drag
-      )
-    )
-
     const link = g
       .selectAll('line')
       .data(links)
