@@ -33,7 +33,7 @@
 - [x] sqlc configured, queries for all tables (users, notes, tags, connections, conversations, glossary, ai_usage)
 - [x] Schema defined: users, notes, tags/note_tags, connections, conversations/messages, glossary_terms, ai_usage_log
 - [x] Full-text search via tsvector/tsquery on note title and body
-- [ ] Seed script for local development
+- [x] Seed script for local development (task db:seed)
 
 ### 4. Auth (Keycloak OIDC + Local Fallback)
 
@@ -41,7 +41,7 @@
 - [x] Session management via Redis (custom store with sliding expiry)
 - [x] Local auth fallback when KEYCLOAK_ISSUER_URL is empty
 - [x] Auth middleware protecting /api routes
-- [ ] Login and logout flow tested end to end
+- [x] Login and logout flow tested end to end (Go integration test with miniredis)
 
 ### 5. Backend Core
 
@@ -61,7 +61,7 @@
 - [x] System prompt for Zettelkasten formatting with ZETTEL_SUGGESTION blocks
 - [x] Token budget tracking per user per month (GET /settings/usage)
 - [x] Conversation history stored in database
-- [ ] "Extract note" action from chat messages
+- [x] "Extract note" action from chat messages (text selection with floating button)
 
 ### 7. Frontend Foundation
 

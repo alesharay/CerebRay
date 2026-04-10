@@ -4,7 +4,7 @@ import { createNote } from '../api/notes'
 import { useChat } from '../hooks/useSSE'
 import type { Conversation, Message, ZettelSuggestion } from '../types'
 import { cn } from '../lib/utils'
-import { Plus, Trash2, Send, Square, Sparkles, BookOpen, Link2, Loader2 } from 'lucide-react'
+import { Plus, Trash2, Send, Square, Sparkles, BookOpen, Link2, Loader2, FileText } from 'lucide-react'
 
 export function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -14,7 +14,12 @@ export function ChatPage() {
   const [creating, setCreating] = useState(false)
   const [loadingConvo, setLoadingConvo] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesAreaRef = useRef<HTMLDivElement>(null)
   const { streaming, streamedText, suggestions, connectionSuggestions, error, send, cancel } = useChat()
+
+  // Text selection state for "Extract note"
+  const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null)
+  const [extractSaved, setExtractSaved] = useState(false)
 
   // Load conversation list
   useEffect(() => {
@@ -122,6 +127,54 @@ export function ChatPage() {
     }
   }
 
+  // Dismiss selection popup when clicking outside
+  useEffect(() => {
+    const dismiss = () => setSelection(null)
+    document.addEventListener('mousedown', dismiss)
+    return () => document.removeEventListener('mousedown', dismiss)
+  }, [])
+
+  const handleTextSelection = useCallback(() => {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      setSelection(null)
+      return
+    }
+    // Only show extract button if selection is inside the messages area
+    const area = messagesAreaRef.current
+    if (!area || !area.contains(sel.anchorNode)) {
+      setSelection(null)
+      return
+    }
+    const range = sel.getRangeAt(0)
+    const rect = range.getBoundingClientRect()
+    const areaRect = area.getBoundingClientRect()
+    setSelection({
+      text: sel.toString().trim(),
+      x: rect.left - areaRect.left + rect.width / 2,
+      y: rect.top - areaRect.top - 8,
+    })
+    setExtractSaved(false)
+  }, [])
+
+  const handleExtractNote = async () => {
+    if (!selection) return
+    try {
+      await createNote({
+        title: selection.text.slice(0, 80),
+        body: selection.text,
+        source_chat_id: activeId || undefined,
+      })
+      setExtractSaved(true)
+      setTimeout(() => {
+        setSelection(null)
+        setExtractSaved(false)
+      }, 1200)
+    } catch {
+      // ignore
+    }
+  }
+
   return (
     <div className="flex h-full gap-0 -m-6">
       {/* Conversation sidebar */}
@@ -172,7 +225,23 @@ export function ChatPage() {
         ) : (
           <>
             {/* Messages */}
-            <div className="flex-1 overflow-auto p-6 space-y-4">
+            <div
+              ref={messagesAreaRef}
+              onMouseUp={handleTextSelection}
+              className="relative flex-1 overflow-auto p-6 space-y-4"
+            >
+              {/* Extract note floating button */}
+              {selection && (
+                <button
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={handleExtractNote}
+                  className="absolute z-20 flex items-center gap-1.5 rounded-lg bg-emerald-800 px-3 py-1.5 text-xs font-medium text-emerald-200 shadow-lg transition-colors hover:bg-emerald-700"
+                  style={{ left: selection.x, top: selection.y, transform: 'translate(-50%, -100%)' }}
+                >
+                  <FileText className="h-3 w-3" />
+                  {extractSaved ? 'Saved!' : 'Extract note'}
+                </button>
+              )}
               {loadingConvo && (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
