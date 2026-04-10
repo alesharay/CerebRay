@@ -219,6 +219,15 @@ type Note struct {
 	SearchVector interface{} `json:"search_vector"`
 }
 
+type NoteEvent struct {
+	ID         int64          `json:"id"`
+	NoteID     int64          `json:"note_id"`
+	UserID     int64          `json:"user_id"`
+	FromStatus NullNoteStatus `json:"from_status"`
+	ToStatus   NoteStatus     `json:"to_status"`
+	CreatedAt  time.Time      `json:"created_at"`
+}
+
 type NoteTag struct {
 	NoteID int64 `json:"note_id"`
 	TagID  int64 `json:"tag_id"`

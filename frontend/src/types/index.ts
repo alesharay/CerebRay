@@ -115,6 +115,68 @@ export interface AIUsage {
   total_requests: number
 }
 
+export interface InboxItem {
+  id: number
+  title: string
+  note_type: NoteType
+  age_seconds: number
+  readiness_score: number
+  created_at: string
+}
+
+export interface LifecycleEntry {
+  action: string
+  count: number
+  avg_dwell_seconds: number
+}
+
+export interface TypeCount {
+  type: string
+  count: number
+}
+
+export interface StrengthScore {
+  overall: number
+  connection_density: number
+  orphan_count: number
+  active_notes: number
+  total_connections: number
+  glossary_count: number
+  glossary_coverage: number
+  sleeping_backlog: number
+  sleeping_avg_age_seconds: number
+  type_distribution: TypeCount[]
+}
+
+export interface ConversionRate {
+  total_conversations: number
+  conversations_with_notes: number
+  rate: number
+}
+
+export interface StaleNote {
+  id: number
+  title: string
+  note_type: NoteType
+  updated_at: string
+  stale_days: number
+}
+
+export interface AnalyticsAIUsage {
+  input_tokens: number
+  output_tokens: number
+  requests: number
+}
+
+export interface AnalyticsData {
+  inbox: InboxItem[]
+  lifecycle: LifecycleEntry[]
+  strength: StrengthScore
+  conversion: ConversionRate
+  ai_usage: AnalyticsAIUsage
+  stale_notes: StaleNote[]
+}
+
 // Zettel suggestion parsed from AI response
 export interface ZettelSuggestion {
   title: string

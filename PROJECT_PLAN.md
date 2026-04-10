@@ -93,7 +93,60 @@
 - [x] Forward link suggestions from AI (CONNECTION_SUGGESTION blocks)
 - [x] Graph visualization of note connections (d3-force interactive graph)
 
-### 10. Testing
+### 10. Analytics Dashboard (Front Page)
+
+The dashboard is the main landing page after login. It surfaces patterns in your
+Zettelkasten usage so you can see how your knowledge base is growing without
+digging through individual notes. All lifecycle data (timestamps, status
+transitions, dwell times) is tracked automatically by the backend - nothing here
+requires manual entry.
+
+#### 10a. Schema - note_events table
+
+- [x] New migration: `note_events` table (note_id, user_id, from_status, to_status, created_at)
+- [x] Backend logs an event on every note status transition (promote, sleep, archive, rise)
+- [x] Backfill initial "created" events from existing notes.created_at
+
+#### 10b. Backend analytics endpoint
+
+- [x] GET /api/v1/dashboard/analytics returns aggregated metrics
+- [x] Inbox snapshot: fleeting notes with age and readiness score (fields filled / total fields)
+- [x] Lifecycle metrics: avg dwell time in inbox, promote/sleep/archive ratios, trend over time
+- [x] Zettelkasten strength score composed of:
+  - Connection density (avg connections per active/linked note)
+  - Orphan count (active notes with zero connections)
+  - Glossary coverage (glossary terms / total active notes)
+  - Type diversity (distribution across note_type enum values)
+  - Sleeping note backlog (count + avg age)
+- [x] Conversation-to-note conversion rate (conversations with at least one source_chat_id note / total)
+- [x] AI usage budget widget data (monthly spend vs budget from ai_usage_log)
+- [x] Stale note detection (active notes not updated in N days)
+
+#### 10c. Frontend dashboard redesign
+
+- [x] Replace current stat-card dashboard with analytics-driven front page
+- [x] Inbox section: list of fleeting notes with age badges + readiness indicators
+- [x] Lifecycle section: promote/sleep/archive ratios, avg triage time, trend bar
+- [x] Zettelkasten health section: strength ring score with metric breakdown
+- [x] Conversation conversion rate widget
+- [x] AI usage widget
+- [x] Stale note nudges (notes that need attention)
+- [ ] Trend sparklines for lifecycle data over time
+
+#### 10d. UI identity
+
+Cerebray has its own visual identity, distinct from Grafana-style monitoring UIs.
+Design principles for the dashboard and all pages:
+
+- [x] Quicksand as the primary font family
+- Warm, approachable palette - not cold infrastructure grays
+- Typographic hierarchy over dense data grids
+- Generous whitespace; the UI should breathe
+- Cards and sections feel like a notebook or study companion, not a dashboard panel
+- Subtle animations and transitions where they add clarity
+- Data visualizations should be clean and minimal, not chart-heavy
+
+### 11. Testing
 
 - [ ] Unit tests for Go handlers (table-driven with fake stores)
 - [ ] Unit tests for auth middleware
@@ -102,14 +155,14 @@
 - [ ] End-to-end tests (Playwright)
 - [ ] Smoke test against live deployment
 
-### 11. Observability
+### 12. Observability
 
 - [ ] Prometheus /metrics endpoint (HTTP request counters, histograms)
 - [ ] AI usage metrics (tokens consumed, requests, latency)
 - [ ] PostHog analytics (page views, note creation, chat usage)
 - [ ] Structured JSON logging in production (zerolog)
 
-### 12. Deployment
+### 13. Deployment
 
 - [ ] Backend Dockerfile (multi-stage Go build, Alpine runtime)
 - [ ] Frontend Dockerfile (Vite build + nginx:alpine runtime)
@@ -221,4 +274,5 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 
 ## Notes and Decisions Log
 
+- **2026-04-09**: Added Phase 10 (Analytics Dashboard). New `note_events` table to track status transitions automatically. Dashboard redesign with inbox overview, lifecycle metrics, Zettelkasten strength score, conversation conversion rate, AI budget, and stale note detection. All lifecycle data is system-tracked, no manual entry. UI identity established: Quicksand font, warm palette, notebook aesthetic - explicitly not a Grafana-style monitoring UI.
 - **2026-04-08**: Project plan created. Tech stack confirmed. Chi chosen over Gin for idiomatic Go alignment. PostgreSQL chosen over MongoDB for structured Zettelkasten data with full-text search (tsvector/tsquery). Keycloak OIDC chosen over Okta SAML for open-source self-hostable auth. sqlc chosen for type-safe SQL over an ORM. Claude API with SSE streaming for AI-assisted note creation.

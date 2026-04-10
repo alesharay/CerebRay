@@ -148,6 +148,15 @@ func (h *NoteHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		Error(w, http.StatusInternalServerError, "failed to create note")
 		return
 	}
+
+	// Log the creation event
+	h.queries.CreateNoteEvent(r.Context(), sqlc.CreateNoteEventParams{
+		NoteID:     note.ID,
+		UserID:     userID,
+		FromStatus: sqlc.NullNoteStatus{Valid: false},
+		ToStatus:   note.Status,
+	})
+
 	JSON(w, http.StatusCreated, note)
 }
 
@@ -208,7 +217,7 @@ func (h *NoteHandlers) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *NoteHandlers) Promote(w http.ResponseWriter, r *http.Request) {
+func (h *NoteHandlers) transitionStatus(w http.ResponseWriter, r *http.Request, toStatus sqlc.NoteStatus, errMsg string) {
 	userID := middleware.GetUserID(r.Context())
 	noteID, err := URLParamInt64(r, "id")
 	if err != nil {
@@ -216,56 +225,47 @@ func (h *NoteHandlers) Promote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture current status before the transition
+	fromStatus, err := h.queries.GetNoteCurrentStatus(r.Context(), sqlc.GetNoteCurrentStatusParams{
+		ID:     noteID,
+		UserID: userID,
+	})
+	if err != nil {
+		Error(w, http.StatusNotFound, "note not found")
+		return
+	}
+
 	note, err := h.queries.UpdateNoteStatus(r.Context(), sqlc.UpdateNoteStatusParams{
 		ID:     noteID,
 		UserID: userID,
-		Status: sqlc.NoteStatusActive,
+		Status: toStatus,
 	})
 	if err != nil {
-		Error(w, http.StatusInternalServerError, "failed to promote note")
+		Error(w, http.StatusInternalServerError, errMsg)
 		return
 	}
+
+	// Log the transition event
+	h.queries.CreateNoteEvent(r.Context(), sqlc.CreateNoteEventParams{
+		NoteID:     noteID,
+		UserID:     userID,
+		FromStatus: sqlc.NullNoteStatus{NoteStatus: fromStatus, Valid: true},
+		ToStatus:   toStatus,
+	})
+
 	JSON(w, http.StatusOK, note)
+}
+
+func (h *NoteHandlers) Promote(w http.ResponseWriter, r *http.Request) {
+	h.transitionStatus(w, r, sqlc.NoteStatusActive, "failed to promote note")
 }
 
 func (h *NoteHandlers) Sleep(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r.Context())
-	noteID, err := URLParamInt64(r, "id")
-	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid note ID")
-		return
-	}
-
-	note, err := h.queries.UpdateNoteStatus(r.Context(), sqlc.UpdateNoteStatusParams{
-		ID:     noteID,
-		UserID: userID,
-		Status: sqlc.NoteStatusSleeping,
-	})
-	if err != nil {
-		Error(w, http.StatusInternalServerError, "failed to move note to echoes")
-		return
-	}
-	JSON(w, http.StatusOK, note)
+	h.transitionStatus(w, r, sqlc.NoteStatusSleeping, "failed to move note to echoes")
 }
 
 func (h *NoteHandlers) Archive(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.GetUserID(r.Context())
-	noteID, err := URLParamInt64(r, "id")
-	if err != nil {
-		Error(w, http.StatusBadRequest, "invalid note ID")
-		return
-	}
-
-	note, err := h.queries.UpdateNoteStatus(r.Context(), sqlc.UpdateNoteStatusParams{
-		ID:     noteID,
-		UserID: userID,
-		Status: sqlc.NoteStatusArchived,
-	})
-	if err != nil {
-		Error(w, http.StatusInternalServerError, "failed to archive note")
-		return
-	}
-	JSON(w, http.StatusOK, note)
+	h.transitionStatus(w, r, sqlc.NoteStatusArchived, "failed to archive note")
 }
 
 func (h *NoteHandlers) Search(w http.ResponseWriter, r *http.Request) {

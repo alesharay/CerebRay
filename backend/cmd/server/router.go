@@ -53,6 +53,7 @@ func buildRouter(deps RouterDeps) http.Handler {
 
 		// Dashboard
 		r.Get("/dashboard", deps.Dashboard.Stats)
+		r.Get("/dashboard/analytics", deps.Dashboard.Analytics)
 
 		// Notes
 		r.Route("/notes", func(r chi.Router) {
