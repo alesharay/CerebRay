@@ -64,6 +64,27 @@ const knownFields = new Set([
   'source_title', 'target_title', 'label', 'reason',
 ])
 
+// Clean up field values: remove leading pipe chars, normalize indentation
+function cleanFieldValue(value: string): string {
+  let cleaned = value
+  // Remove leading pipe character (YAML block indicator the AI sometimes adds)
+  if (cleaned.startsWith('|')) {
+    cleaned = cleaned.slice(1)
+  }
+  // Find the common leading whitespace across non-empty lines and strip it
+  const lines = cleaned.split('\n')
+  const nonEmptyLines = lines.filter(l => l.trim().length > 0)
+  if (nonEmptyLines.length > 0) {
+    const minIndent = Math.min(
+      ...nonEmptyLines.map(l => l.match(/^(\s*)/)?.[1].length ?? 0)
+    )
+    if (minIndent > 0) {
+      cleaned = lines.map(l => l.slice(minIndent)).join('\n')
+    }
+  }
+  return cleaned.trim()
+}
+
 function parseBlock(block: string): Record<string, string> {
   const fields: Record<string, string> = {}
   let currentKey = ''
@@ -76,7 +97,7 @@ function parseBlock(block: string): Record<string, string> {
       if (knownFields.has(potentialKey)) {
         // Save previous field
         if (currentKey) {
-          fields[currentKey] = currentValue.trim()
+          fields[currentKey] = cleanFieldValue(currentValue)
         }
         currentKey = potentialKey
         currentValue = line.slice(colonIdx + 1).trim()
@@ -91,7 +112,7 @@ function parseBlock(block: string): Record<string, string> {
 
   // Save the last field
   if (currentKey) {
-    fields[currentKey] = currentValue.trim()
+    fields[currentKey] = cleanFieldValue(currentValue)
   }
 
   return fields
