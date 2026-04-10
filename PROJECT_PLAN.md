@@ -151,7 +151,8 @@ Design principles for the dashboard and all pages:
 - [ ] Unit tests for Go handlers (table-driven with fake stores)
 - [ ] Unit tests for auth middleware
 - [ ] Integration tests against live PostgreSQL
-- [ ] Frontend component tests (Vitest + RTL)
+- [x] Frontend testing infrastructure (Vitest + RTL + jsdom configured)
+- [~] Frontend component tests (Vitest + RTL) - initial tests for utils, auth store, landing page
 - [ ] End-to-end tests (Playwright)
 - [ ] Smoke test against live deployment
 
