@@ -50,16 +50,41 @@ export function parseConnectionSuggestions(text: string): ConnectionSuggestion[]
   return suggestions
 }
 
+const knownFields = new Set([
+  'title', 'type', 'summary', 'laymans_terms', 'analogy', 'core_idea',
+  'body', 'components', 'why_it_matters', 'examples', 'templates', 'tags',
+  'source_title', 'target_title', 'label', 'reason',
+])
+
 function parseBlock(block: string): Record<string, string> {
   const fields: Record<string, string> = {}
+  let currentKey = ''
+  let currentValue = ''
+
   for (const line of block.split('\n')) {
     const colonIdx = line.indexOf(':')
-    if (colonIdx === -1) continue
-    const key = line.slice(0, colonIdx).trim()
-    const value = line.slice(colonIdx + 1).trim()
-    if (key && value) {
-      fields[key] = value
+    if (colonIdx > 0) {
+      const potentialKey = line.slice(0, colonIdx).trim()
+      if (knownFields.has(potentialKey)) {
+        // Save previous field
+        if (currentKey) {
+          fields[currentKey] = currentValue.trim()
+        }
+        currentKey = potentialKey
+        currentValue = line.slice(colonIdx + 1).trim()
+        continue
+      }
+    }
+    // Continuation of current multi-line field
+    if (currentKey) {
+      currentValue += '\n' + line
     }
   }
+
+  // Save the last field
+  if (currentKey) {
+    fields[currentKey] = currentValue.trim()
+  }
+
   return fields
 }
