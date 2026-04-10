@@ -168,14 +168,14 @@ Design principles for the dashboard and all pages:
 - [x] Backend Dockerfile (multi-stage Go build, Alpine runtime)
 - [x] Frontend Dockerfile (Vite build + nginx:alpine runtime)
 - [x] docker-compose.prod.yml (full production stack)
-- [ ] Images pushed to registry.homelab
-- [ ] Flux CD image automation (ts-* tag pattern)
-- [ ] k8s manifests generated via task k8s:manifests
-- [ ] PostgreSQL HelmRelease (Bitnami chart)
-- [ ] Redis HelmRelease (Bitnami chart)
-- [ ] Vault secrets pushed via task secrets:vault
-- [ ] ExternalSecrets pulling from Vault
-- [ ] Ingress with TLS via cert-manager
+- [x] Images pushed to registry.homelab
+- [x] Flux CD image automation (ts-* tag pattern, ImageRepositories + ImagePolicies)
+- [x] k8s manifests written to homelab-gitops/apps/base/cerebray/
+- [x] PostgreSQL HelmRelease (Bitnami chart)
+- [x] Redis HelmRelease (Bitnami chart)
+- [~] Vault secrets pushed via task secrets:vault (pending Tailscale SSH auth)
+- [x] ExternalSecrets pulling from Vault
+- [x] Ingress with TLS via cert-manager
 - [ ] All pods running and healthy
 
 ---
