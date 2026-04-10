@@ -170,9 +170,9 @@ tasks:
       - sqlc generate
 
   db:seed:
-    desc: Seed the database with sample data (placeholder)
+    desc: Seed database with sample data for local development
     cmds:
-      - echo "TODO - implement seed script"
+      - psql "$DATABASE_URL" -f {{.BACKEND_DIR}}/db/seed.sql
 
   # ---------------------------------------------------------------------------
   # Frontend
