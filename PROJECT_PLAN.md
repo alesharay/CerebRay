@@ -173,10 +173,11 @@ Design principles for the dashboard and all pages:
 - [x] k8s manifests written to homelab-gitops/apps/base/cerebray/
 - [x] PostgreSQL HelmRelease (Bitnami chart)
 - [x] Redis HelmRelease (Bitnami chart)
-- [~] Vault secrets pushed via task secrets:vault (pending Tailscale SSH auth)
+- [x] Vault secrets pushed via task secrets:vault
 - [x] ExternalSecrets pulling from Vault
 - [x] Ingress with TLS via cert-manager
-- [ ] All pods running and healthy
+- [x] Database migrations applied to production PostgreSQL
+- [x] All pods running and healthy
 
 ---
 
