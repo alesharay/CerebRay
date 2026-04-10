@@ -48,7 +48,7 @@ export function EchoesPage() {
                 {
                   label: 'Promote to Codex',
                   icon: ArrowUpCircle,
-                  onClick: () => handleAction(note.id, promoteNote),
+                  onClick: () => handleAction(note.id, (id) => promoteNote(id).then(r => r.note)),
                   className: 'text-emerald-500 hover:bg-emerald-900/30',
                 },
                 {

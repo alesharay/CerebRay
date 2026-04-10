@@ -87,6 +87,14 @@ FROM notes
 WHERE user_id = $1
 GROUP BY status;
 
+-- name: UpdateNoteSourceChat :one
+UPDATE notes SET source_chat_id = $3, updated_at = NOW()
+WHERE id = $1 AND user_id = $2
+RETURNING *;
+
+-- name: GetNoteBySourceChat :one
+SELECT * FROM notes WHERE source_chat_id = $1 AND user_id = $2;
+
 -- name: RecentNotes :many
 SELECT * FROM notes
 WHERE user_id = $1

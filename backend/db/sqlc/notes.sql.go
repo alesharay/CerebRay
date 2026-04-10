@@ -168,6 +168,43 @@ func (q *Queries) GetNoteByID(ctx context.Context, arg GetNoteByIDParams) (Note,
 	return i, err
 }
 
+const getNoteBySourceChat = `-- name: GetNoteBySourceChat :one
+SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector FROM notes WHERE source_chat_id = $1 AND user_id = $2
+`
+
+type GetNoteBySourceChatParams struct {
+	SourceChatID *int64 `json:"source_chat_id"`
+	UserID       int64  `json:"user_id"`
+}
+
+func (q *Queries) GetNoteBySourceChat(ctx context.Context, arg GetNoteBySourceChatParams) (Note, error) {
+	row := q.db.QueryRow(ctx, getNoteBySourceChat, arg.SourceChatID, arg.UserID)
+	var i Note
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Summary,
+		&i.LaymansTerms,
+		&i.Analogy,
+		&i.CoreIdea,
+		&i.Body,
+		&i.Components,
+		&i.WhyItMatters,
+		&i.Examples,
+		&i.Templates,
+		&i.Additional,
+		&i.NoteType,
+		&i.Status,
+		&i.Tlp,
+		&i.SourceChatID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SearchVector,
+	)
+	return i, err
+}
+
 const listNotesByStatus = `-- name: ListNotesByStatus :many
 SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector FROM notes
 WHERE user_id = $1 AND status = $2
@@ -584,6 +621,46 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, e
 		arg.Status,
 		arg.Tlp,
 	)
+	var i Note
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Summary,
+		&i.LaymansTerms,
+		&i.Analogy,
+		&i.CoreIdea,
+		&i.Body,
+		&i.Components,
+		&i.WhyItMatters,
+		&i.Examples,
+		&i.Templates,
+		&i.Additional,
+		&i.NoteType,
+		&i.Status,
+		&i.Tlp,
+		&i.SourceChatID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SearchVector,
+	)
+	return i, err
+}
+
+const updateNoteSourceChat = `-- name: UpdateNoteSourceChat :one
+UPDATE notes SET source_chat_id = $3, updated_at = NOW()
+WHERE id = $1 AND user_id = $2
+RETURNING id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector
+`
+
+type UpdateNoteSourceChatParams struct {
+	ID           int64  `json:"id"`
+	UserID       int64  `json:"user_id"`
+	SourceChatID *int64 `json:"source_chat_id"`
+}
+
+func (q *Queries) UpdateNoteSourceChat(ctx context.Context, arg UpdateNoteSourceChatParams) (Note, error) {
+	row := q.db.QueryRow(ctx, updateNoteSourceChat, arg.ID, arg.UserID, arg.SourceChatID)
 	var i Note
 	err := row.Scan(
 		&i.ID,

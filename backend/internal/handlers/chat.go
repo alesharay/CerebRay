@@ -109,7 +109,18 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 		noteTitles = append(noteTitles, n.Title)
 	}
 
-	systemPrompt := ai.BuildSystemPrompt(tagNames, noteTitles)
+	// Check if this is the first message in a note-linked conversation (expand mode)
+	var systemPrompt string
+	linkedNote, noteErr := h.queries.GetNoteBySourceChat(r.Context(), sqlc.GetNoteBySourceChatParams{
+		SourceChatID: &convoID,
+		UserID:       userID,
+	})
+	if noteErr == nil && len(dbMessages) == 1 {
+		// First message in a promoted note's conversation - use expand prompt
+		systemPrompt = ai.BuildExpandPrompt(linkedNote.Title, tagNames, noteTitles)
+	} else {
+		systemPrompt = ai.BuildSystemPrompt(tagNames, noteTitles)
+	}
 
 	// Set up SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")

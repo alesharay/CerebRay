@@ -1,8 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/layout/AppLayout'
 import { LandingPage } from './pages/LandingPage'
 import { DashboardPage } from './pages/DashboardPage'
-import { ChatPage } from './pages/ChatPage'
 import { InboxPage } from './pages/InboxPage'
 import { EchoesPage } from './pages/EchoesPage'
 import { CodexPage } from './pages/CodexPage'
@@ -18,7 +17,7 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/chat" element={<ChatPage />} />
+          <Route path="/chat" element={<Navigate to="/inbox" replace />} />
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/echoes" element={<EchoesPage />} />
           <Route path="/codex" element={<CodexPage />} />

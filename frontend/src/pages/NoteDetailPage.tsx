@@ -1,19 +1,23 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getNote, updateNote, deleteNote, promoteNote, sleepNote, archiveNote, searchNotes } from '../api/notes'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { getNote, updateNote, deleteNote, sleepNote, archiveNote, searchNotes } from '../api/notes'
 import { listConnectionsForNote, createConnection } from '../api/connections'
 import { addTagToNote } from '../api/tags'
-import type { Note, Connection, NoteType, NoteTLP } from '../types'
+import { getConversation } from '../api/chat'
+import { useChat } from '../hooks/useSSE'
+import { parseZettelSuggestions } from '../lib/zettelParser'
+import type { Note, Connection, NoteType, NoteTLP, Message } from '../types'
 import { cn } from '../lib/utils'
 import {
-  ArrowLeft, Save, Trash2, ArrowUpCircle, Moon, Archive,
+  ArrowLeft, Save, Trash2, Moon, Archive,
   Link2, Plus, Loader2, ArrowRight, ArrowDownLeft, Search,
+  Send, Sparkles, StopCircle, MessageSquare,
 } from 'lucide-react'
 
 const noteTypes: NoteType[] = ['concept', 'theory', 'insight', 'quote', 'reference', 'question', 'structure', 'guide']
 const tlpOptions: NoteTLP[] = ['clear', 'green', 'amber', 'red']
 
-const sections: { key: keyof Note; label: string }[] = [
+const contentSections: { key: keyof Note; label: string }[] = [
   { key: 'summary', label: 'Summary' },
   { key: 'core_idea', label: 'Core idea' },
   { key: 'laymans_terms', label: "Layman's terms" },
@@ -28,7 +32,10 @@ const sections: { key: keyof Note; label: string }[] = [
 
 export function NoteDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const promoted = searchParams.get('promoted') === 'true'
+
   const [note, setNote] = useState<Note | null>(null)
   const [connections, setConnections] = useState<Connection[]>([])
   const [loading, setLoading] = useState(true)
@@ -42,6 +49,14 @@ export function NoteDetailPage() {
   const [linkLabel, setLinkLabel] = useState('')
   const [showLinkBuilder, setShowLinkBuilder] = useState(false)
 
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<Message[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const expandTriggered = useRef(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+  const { streaming, streamedText, error: chatError, send, cancel } = useChat()
+
+  // Load note and connections
   useEffect(() => {
     if (!id) return
     const noteId = Number(id)
@@ -56,6 +71,78 @@ export function NoteDetailPage() {
       navigate('/codex')
     }).finally(() => setLoading(false))
   }, [id, navigate])
+
+  // Load chat history when note has a linked conversation
+  useEffect(() => {
+    if (!note?.source_chat_id) return
+    getConversation(note.source_chat_id).then((data) => {
+      setChatMessages(data.messages || [])
+    }).catch(() => {})
+  }, [note?.source_chat_id])
+
+  // Auto-expand on promote: trigger AI research after chat history loads
+  const triggerExpand = (convoId: number, title: string, noteId: number) => {
+    const userMsg: Message = {
+      id: Date.now() - 1,
+      conversation_id: convoId,
+      role: 'user',
+      content: `Expand this thought into a full Zettel: ${title}`,
+      input_tokens: 0,
+      output_tokens: 0,
+      model: '',
+      created_at: new Date().toISOString(),
+    }
+    setChatMessages(prev => [...prev, userMsg])
+
+    send(convoId, `Expand this thought into a full Zettel: ${title}`, (fullText) => {
+      const suggestions = parseZettelSuggestions(fullText)
+      if (suggestions.length > 0) {
+        const s = suggestions[0]
+        const updates: Partial<Note> = {
+          title: s.title || title,
+          summary: s.summary,
+          core_idea: s.core_idea,
+          laymans_terms: s.laymans_terms,
+          analogy: s.analogy,
+          body: s.body,
+          components: s.components,
+          why_it_matters: s.why_it_matters,
+          examples: s.examples,
+          templates: s.templates,
+          note_type: s.type as NoteType,
+        }
+        updateNote(noteId, updates).then((updated) => {
+          setNote(updated)
+          setDraft(updated)
+        }).catch(() => {})
+      }
+      setChatMessages(prev => [...prev, {
+        id: Date.now(),
+        conversation_id: convoId,
+        role: 'assistant' as const,
+        content: fullText,
+        input_tokens: 0,
+        output_tokens: 0,
+        model: '',
+        created_at: new Date().toISOString(),
+      }])
+    })
+  }
+
+  useEffect(() => {
+    if (!promoted || !note?.source_chat_id || expandTriggered.current) return
+    const hasAssistant = chatMessages.some(m => m.role === 'assistant')
+    if (hasAssistant) return
+
+    expandTriggered.current = true
+    // Defer to avoid synchronous setState in effect body
+    queueMicrotask(() => triggerExpand(note.source_chat_id!, note.title, note.id))
+  }, [promoted, note, chatMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll chat to bottom when streaming
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [streamedText, chatMessages])
 
   // Search for notes to link (debounced)
   useEffect(() => {
@@ -121,9 +208,39 @@ export function NoteDetailPage() {
     setLinkLabel('')
     setLinkResults([])
     setShowLinkBuilder(false)
-    // Reload connections
     const conns = await listConnectionsForNote(note.id).catch(() => [])
     setConnections(conns)
+  }
+
+  const handleSendChat = () => {
+    if (!note?.source_chat_id || !chatInput.trim() || streaming) return
+    const content = chatInput.trim()
+    setChatInput('')
+
+    // Add user message to display
+    setChatMessages(prev => [...prev, {
+      id: Date.now(),
+      conversation_id: note.source_chat_id!,
+      role: 'user' as const,
+      content,
+      input_tokens: 0,
+      output_tokens: 0,
+      model: '',
+      created_at: new Date().toISOString(),
+    }])
+
+    send(note.source_chat_id, content, (fullText) => {
+      setChatMessages(prev => [...prev, {
+        id: Date.now(),
+        conversation_id: note.source_chat_id!,
+        role: 'assistant' as const,
+        content: fullText,
+        input_tokens: 0,
+        output_tokens: 0,
+        model: '',
+        created_at: new Date().toISOString(),
+      }])
+    })
   }
 
   if (loading) {
@@ -136,11 +253,13 @@ export function NoteDetailPage() {
 
   if (!note) return null
 
+  const expanding = promoted && streaming
+
   const outgoing = connections.filter((c) => c.direction === 'outgoing')
   const incoming = connections.filter((c) => c.direction === 'incoming')
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6 pb-12">
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link to="/codex" className="rounded p-1 text-zinc-400 hover:text-white">
@@ -154,6 +273,14 @@ export function NoteDetailPage() {
           placeholder="Note title"
         />
       </div>
+
+      {/* Expanding indicator */}
+      {expanding && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-800/40 bg-emerald-900/20 px-4 py-3">
+          <Sparkles className="h-4 w-4 animate-pulse text-emerald-400" />
+          <span className="text-sm text-emerald-300">AI is expanding your thought...</span>
+        </div>
+      )}
 
       {/* Meta row */}
       <div className="flex flex-wrap items-center gap-3">
@@ -189,19 +316,9 @@ export function NoteDetailPage() {
         </span>
 
         <div className="ml-auto flex gap-1">
-          {note.status === 'fleeting' && (
-            <>
-              <button onClick={() => handleStatusAction(promoteNote)} className="rounded p-1.5 text-emerald-500 hover:bg-emerald-900/30" title="Promote">
-                <ArrowUpCircle className="h-4 w-4" />
-              </button>
-              <button onClick={() => handleStatusAction(sleepNote)} className="rounded p-1.5 text-purple-400 hover:bg-purple-900/30" title="Sleep">
-                <Moon className="h-4 w-4" />
-              </button>
-            </>
-          )}
           {note.status === 'sleeping' && (
-            <button onClick={() => handleStatusAction(promoteNote)} className="rounded p-1.5 text-emerald-500 hover:bg-emerald-900/30" title="Promote">
-              <ArrowUpCircle className="h-4 w-4" />
+            <button onClick={() => handleStatusAction(sleepNote)} className="rounded p-1.5 text-purple-400 hover:bg-purple-900/30" title="Sleep">
+              <Moon className="h-4 w-4" />
             </button>
           )}
           {(note.status === 'active' || note.status === 'linked') && (
@@ -236,7 +353,7 @@ export function NoteDetailPage() {
 
       {/* Content sections */}
       <div className="space-y-4">
-        {sections.map(({ key, label }) => (
+        {contentSections.map(({ key, label }) => (
           <div key={key}>
             <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">
               {label}
@@ -268,7 +385,6 @@ export function NoteDetailPage() {
           </button>
         </div>
 
-        {/* Connection builder */}
         {showLinkBuilder && (
           <div className="mb-3 rounded-lg border border-zinc-700 bg-zinc-900 p-3 space-y-2">
             <div className="relative">
@@ -307,7 +423,6 @@ export function NoteDetailPage() {
           </div>
         )}
 
-        {/* Outgoing links */}
         {outgoing.length > 0 && (
           <div className="mb-3">
             <div className="mb-1 flex items-center gap-1.5 text-xs text-zinc-500">
@@ -329,7 +444,6 @@ export function NoteDetailPage() {
           </div>
         )}
 
-        {/* Backlinks */}
         {incoming.length > 0 && (
           <div className="mb-3">
             <div className="mb-1 flex items-center gap-1.5 text-xs text-zinc-500">
@@ -374,6 +488,85 @@ export function NoteDetailPage() {
           Delete
         </button>
       </div>
+
+      {/* Chat section - only for notes with a linked conversation */}
+      {note.source_chat_id && (
+        <div className="border-t border-zinc-800 pt-6">
+          <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-400">
+            <MessageSquare className="h-4 w-4" />
+            Research Chat
+          </h3>
+
+          <div className="space-y-3">
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={cn(
+                  'rounded-lg px-4 py-3 text-sm',
+                  msg.role === 'user'
+                    ? 'ml-8 bg-zinc-800 text-zinc-200'
+                    : 'mr-8 border border-zinc-800/60 bg-zinc-900/50 text-zinc-300'
+                )}
+              >
+                <div className="mb-1 text-xs font-medium text-zinc-500">
+                  {msg.role === 'user' ? 'You' : 'AI'}
+                </div>
+                <div className="whitespace-pre-wrap">{msg.content}</div>
+              </div>
+            ))}
+
+            {/* Streaming indicator */}
+            {streaming && (
+              <div className="mr-8 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
+                <div className="mb-1 text-xs font-medium text-zinc-500">AI</div>
+                <div className="whitespace-pre-wrap">{streamedText || 'Thinking...'}</div>
+              </div>
+            )}
+
+            {chatError && (
+              <div className="rounded-lg border border-red-800/40 bg-red-900/20 px-4 py-2 text-sm text-red-400">
+                {chatError}
+              </div>
+            )}
+
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Chat input */}
+          <div className="mt-4 flex gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendChat()
+                }
+              }}
+              placeholder="Ask a follow-up question..."
+              disabled={streaming}
+              className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none transition-colors focus:border-zinc-600 disabled:opacity-50"
+            />
+            {streaming ? (
+              <button
+                onClick={cancel}
+                className="rounded-lg bg-red-900/30 px-3 py-2.5 text-red-400 transition-colors hover:bg-red-900/50"
+              >
+                <StopCircle className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSendChat}
+                disabled={!chatInput.trim()}
+                className="rounded-lg bg-zinc-800 px-3 py-2.5 text-zinc-300 transition-colors hover:bg-zinc-700 disabled:opacity-40"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

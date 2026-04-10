@@ -2,7 +2,6 @@ import { Link, useLocation } from 'react-router-dom'
 import { cn } from '../../lib/utils'
 import {
   LayoutDashboard,
-  MessageSquare,
   Inbox,
   CloudFog,
   BookOpen,
@@ -13,7 +12,6 @@ import {
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/chat', label: 'Chat', icon: MessageSquare },
   { path: '/inbox', label: 'Inbox', icon: Inbox },
   { path: '/echoes', label: 'Echoes', icon: CloudFog },
   { path: '/codex', label: 'Codex', icon: BookOpen },

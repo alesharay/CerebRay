@@ -38,8 +38,13 @@ export function deleteNote(id: number): Promise<void> {
   return api.delete<void>(`/notes/${id}`)
 }
 
-export function promoteNote(id: number): Promise<Note> {
-  return api.post<Note>(`/notes/${id}/promote`)
+export interface PromoteResult {
+  note: Note
+  conversation_id: number
+}
+
+export function promoteNote(id: number): Promise<PromoteResult> {
+  return api.post<PromoteResult>(`/notes/${id}/promote`)
 }
 
 export function sleepNote(id: number): Promise<Note> {

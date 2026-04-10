@@ -257,7 +257,70 @@ func (h *NoteHandlers) transitionStatus(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *NoteHandlers) Promote(w http.ResponseWriter, r *http.Request) {
-	h.transitionStatus(w, r, sqlc.NoteStatusActive, "failed to promote note")
+	userID := middleware.GetUserID(r.Context())
+	noteID, err := URLParamInt64(r, "id")
+	if err != nil {
+		Error(w, http.StatusBadRequest, "invalid note ID")
+		return
+	}
+
+	// Fetch the note to get the title and current status
+	note, err := h.queries.GetNoteByID(r.Context(), sqlc.GetNoteByIDParams{
+		ID:     noteID,
+		UserID: userID,
+	})
+	if err != nil {
+		Error(w, http.StatusNotFound, "note not found")
+		return
+	}
+
+	fromStatus := note.Status
+
+	// Create a conversation linked to this note
+	convo, err := h.queries.CreateConversation(r.Context(), sqlc.CreateConversationParams{
+		UserID: userID,
+		Title:  note.Title,
+		Topic:  note.Title,
+	})
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "failed to create conversation")
+		return
+	}
+
+	// Link the conversation to the note
+	_, err = h.queries.UpdateNoteSourceChat(r.Context(), sqlc.UpdateNoteSourceChatParams{
+		ID:           noteID,
+		UserID:       userID,
+		SourceChatID: &convo.ID,
+	})
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "failed to link conversation")
+		return
+	}
+
+	// Transition status to active
+	updated, err := h.queries.UpdateNoteStatus(r.Context(), sqlc.UpdateNoteStatusParams{
+		ID:     noteID,
+		UserID: userID,
+		Status: sqlc.NoteStatusActive,
+	})
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "failed to promote note")
+		return
+	}
+
+	// Log the transition event
+	h.queries.CreateNoteEvent(r.Context(), sqlc.CreateNoteEventParams{
+		NoteID:     noteID,
+		UserID:     userID,
+		FromStatus: sqlc.NullNoteStatus{NoteStatus: fromStatus, Valid: true},
+		ToStatus:   sqlc.NoteStatusActive,
+	})
+
+	JSON(w, http.StatusOK, map[string]interface{}{
+		"note":            updated,
+		"conversation_id": convo.ID,
+	})
 }
 
 func (h *NoteHandlers) Sleep(w http.ResponseWriter, r *http.Request) {
