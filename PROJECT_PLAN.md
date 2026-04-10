@@ -159,7 +159,8 @@ Design principles for the dashboard and all pages:
 
 ### 10f. UX Fixes and Polish
 
-- [ ] Dashboard: fleeting notes link to inbox, not codex
+- [x] Dashboard: fleeting notes link to inbox, not codex
+- [ ] Echoes page: simplify layout to title + age + actions (promote/archive), not full Zettel fields
 - [ ] Chat suggestions: show "Save to Inbox" cards when AI suggests new notes during follow-up chat
 - [ ] Save button rework: "Refresh from chat" action that re-processes the conversation and updates the note
 - [ ] Remove debug console.log statements from NoteDetailPage
