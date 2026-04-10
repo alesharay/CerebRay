@@ -721,14 +721,14 @@ export function NoteDetailPage() {
               </div>
             )}
 
-            {/* Suggestion cards from follow-up chat */}
-            {chatSuggestions.length > 0 && (
+            {/* Suggestion cards from follow-up chat (exclude the current note) */}
+            {chatSuggestions.filter((s) => s.title.toLowerCase() !== note.title.toLowerCase()).length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
                   <Sparkles className="h-3.5 w-3.5" />
                   Suggested notes
                 </div>
-                {chatSuggestions.map((s, i) => (
+                {chatSuggestions.filter((s) => s.title.toLowerCase() !== note.title.toLowerCase()).map((s, i) => (
                   <div
                     key={i}
                     className="rounded-lg border border-zinc-700 bg-zinc-900 p-4"
