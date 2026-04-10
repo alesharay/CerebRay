@@ -47,14 +47,7 @@ export function sendMessage(conversationId: number, content: string, callbacks: 
     const decoder = new TextDecoder()
     let buffer = ''
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
+    const processLines = (lines: string[]) => {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6)
@@ -71,6 +64,21 @@ export function sendMessage(conversationId: number, content: string, callbacks: 
           // ignore parse errors
         }
       }
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      processLines(lines)
+    }
+
+    // Process any remaining data in the buffer after stream ends
+    if (buffer.trim()) {
+      processLines(buffer.split('\n'))
     }
   }).catch((err) => {
     if (err.name !== 'AbortError') {
