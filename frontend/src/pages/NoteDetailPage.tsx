@@ -51,34 +51,36 @@ export function NoteDetailPage() {
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<Message[]>([])
+  const [chatLoadId, setChatLoadId] = useState<number | null>(null)
   const [chatInput, setChatInput] = useState('')
   const expandTriggered = useRef(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const { streaming, streamedText, error: chatError, send, cancel } = useChat()
 
-  // Load note and connections
+  // Load note, connections, and chat history together
   useEffect(() => {
     if (!id) return
+    expandTriggered.current = false
+
     const noteId = Number(id)
-    Promise.all([
-      getNote(noteId),
-      listConnectionsForNote(noteId).catch(() => []),
-    ]).then(([n, c]) => {
+    getNote(noteId).then(async (n) => {
       setNote(n)
       setDraft(n)
-      setConnections(c)
+      const conns = await listConnectionsForNote(noteId).catch(() => [] as Connection[])
+      setConnections(conns)
+
+      // Load chat if note has a linked conversation
+      if (n.source_chat_id) {
+        const data = await getConversation(n.source_chat_id).catch(() => null)
+        setChatMessages(data?.messages || [])
+      } else {
+        setChatMessages([])
+      }
+      setChatLoadId(noteId)
     }).catch(() => {
       navigate('/codex')
     }).finally(() => setLoading(false))
   }, [id, navigate])
-
-  // Load chat history when note has a linked conversation
-  useEffect(() => {
-    if (!note?.source_chat_id) return
-    getConversation(note.source_chat_id).then((data) => {
-      setChatMessages(data.messages || [])
-    }).catch(() => {})
-  }, [note?.source_chat_id])
 
   // Auto-expand on promote: trigger AI research after chat history loads
   const triggerExpand = (convoId: number, title: string, noteId: number) => {
@@ -143,13 +145,13 @@ export function NoteDetailPage() {
 
   useEffect(() => {
     if (!promoted || !note?.source_chat_id || expandTriggered.current) return
+    if (chatLoadId !== note.id) return // wait for chat history to load for this note
     const hasAssistant = chatMessages.some(m => m.role === 'assistant')
     if (hasAssistant) return
 
     expandTriggered.current = true
-    // Defer to avoid synchronous setState in effect body
     queueMicrotask(() => triggerExpand(note.source_chat_id!, note.title, note.id))
-  }, [promoted, note, chatMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [promoted, chatLoadId, note, chatMessages]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll chat to bottom when streaming
   useEffect(() => {
