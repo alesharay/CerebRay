@@ -146,6 +146,25 @@ Design principles for the dashboard and all pages:
 - Subtle animations and transitions where they add clarity
 - Data visualizations should be clean and minimal, not chart-heavy
 
+### 10e. Interactive Knowledge Graph (Index Page)
+
+- [ ] Zoom and pan (d3-zoom) on the force-directed graph
+- [ ] Click a node to navigate to the note detail page
+- [ ] Hover tooltip showing note title, type, and connection count
+- [ ] Drag nodes to rearrange the layout
+- [ ] Color legend for note types
+- [ ] Highlight connected nodes on hover (dim unrelated nodes)
+- [ ] Search/filter within the graph view
+- [ ] Cluster visualization (group tightly connected notes)
+
+### 10f. UX Fixes and Polish
+
+- [ ] Dashboard: fleeting notes link to inbox, not codex
+- [ ] Chat suggestions: show "Save to Inbox" cards when AI suggests new notes during follow-up chat
+- [ ] Save button rework: "Refresh from chat" action that re-processes the conversation and updates the note
+- [ ] Remove debug console.log statements from NoteDetailPage
+- [ ] Trend sparklines for lifecycle data over time (dashboard)
+
 ### 11. Testing
 
 - [ ] Unit tests for Go handlers (table-driven with fake stores)
@@ -276,5 +295,6 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 
 ## Notes and Decisions Log
 
+- **2026-04-10**: Workflow refactor complete (Phase 10). Inbox is now quick-capture, promote triggers AI expansion, note detail page has embedded chat. Chat page removed from nav. Added Phase 10e (interactive knowledge graph) and 10f (UX fixes) based on user testing. Broken d3 zoom placeholder fixed. SSE buffer flush bug found and fixed (done event not processed). Zettel parser upgraded for multi-line field content. Deployed to homelab k8s with all infrastructure operational.
 - **2026-04-09**: Added Phase 10 (Analytics Dashboard). New `note_events` table to track status transitions automatically. Dashboard redesign with inbox overview, lifecycle metrics, Zettelkasten strength score, conversation conversion rate, AI budget, and stale note detection. All lifecycle data is system-tracked, no manual entry. UI identity established: Quicksand font, warm palette, notebook aesthetic - explicitly not a Grafana-style monitoring UI.
 - **2026-04-08**: Project plan created. Tech stack confirmed. Chi chosen over Gin for idiomatic Go alignment. PostgreSQL chosen over MongoDB for structured Zettelkasten data with full-text search (tsvector/tsquery). Keycloak OIDC chosen over Okta SAML for open-source self-hostable auth. sqlc chosen for type-safe SQL over an ORM. Claude API with SSE streaming for AI-assisted note creation.
