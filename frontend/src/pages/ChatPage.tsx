@@ -17,6 +17,9 @@ export function ChatPage() {
   const messagesAreaRef = useRef<HTMLDivElement>(null)
   const { streaming, streamedText, suggestions, connectionSuggestions, error, send, cancel } = useChat()
 
+  // Track which suggestions have been saved to prevent duplicates
+  const [savedSuggestions, setSavedSuggestions] = useState<Set<number>>(new Set())
+
   // Text selection state for "Extract note"
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null)
   const [extractSaved, setExtractSaved] = useState(false)
@@ -99,7 +102,8 @@ export function ChatPage() {
     })
   }
 
-  const handleSaveNote = async (suggestion: ZettelSuggestion) => {
+  const handleSaveNote = async (suggestion: ZettelSuggestion, index: number) => {
+    if (savedSuggestions.has(index)) return
     try {
       await createNote({
         title: suggestion.title,
@@ -115,6 +119,7 @@ export function ChatPage() {
         templates: suggestion.templates,
         source_chat_id: activeId || undefined,
       })
+      setSavedSuggestions((prev) => new Set(prev).add(index))
     } catch {
       // ignore
     }
@@ -292,11 +297,17 @@ export function ChatPage() {
                         <p className="mb-3 text-sm text-zinc-400">{s.summary}</p>
                       )}
                       <button
-                        onClick={() => handleSaveNote(s)}
-                        className="flex items-center gap-1.5 rounded bg-emerald-800/50 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-800"
+                        onClick={() => handleSaveNote(s, i)}
+                        disabled={savedSuggestions.has(i)}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors',
+                          savedSuggestions.has(i)
+                            ? 'bg-zinc-800 text-zinc-500 cursor-default'
+                            : 'bg-emerald-800/50 text-emerald-300 hover:bg-emerald-800'
+                        )}
                       >
                         <BookOpen className="h-3 w-3" />
-                        Save to Inbox
+                        {savedSuggestions.has(i) ? 'Saved' : 'Save to Inbox'}
                       </button>
                     </div>
                   ))}

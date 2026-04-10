@@ -60,6 +60,7 @@ export function NoteDetailPage() {
   const expandTriggered = useRef(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const { streaming, streamedText, suggestions: chatSuggestions, error: chatError, send, cancel } = useChat()
+  const [savedSuggestions, setSavedSuggestions] = useState<Set<number>>(new Set())
 
   // Load note, connections, and chat history together
   useEffect(() => {
@@ -256,7 +257,8 @@ export function NoteDetailPage() {
     })
   }
 
-  const handleSaveSuggestion = async (suggestion: ZettelSuggestion) => {
+  const handleSaveSuggestion = async (suggestion: ZettelSuggestion, index: number) => {
+    if (savedSuggestions.has(index)) return
     try {
       await createNote({
         title: suggestion.title,
@@ -272,6 +274,7 @@ export function NoteDetailPage() {
         templates: suggestion.templates,
         source_chat_id: note?.source_chat_id || undefined,
       })
+      setSavedSuggestions((prev) => new Set(prev).add(index))
     } catch {
       // ignore
     }
@@ -740,11 +743,17 @@ export function NoteDetailPage() {
                       <p className="mb-3 text-sm text-zinc-400">{s.summary}</p>
                     )}
                     <button
-                      onClick={() => handleSaveSuggestion(s)}
-                      className="flex items-center gap-1.5 rounded bg-emerald-800/50 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-800"
+                      onClick={() => handleSaveSuggestion(s, i)}
+                      disabled={savedSuggestions.has(i)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors',
+                        savedSuggestions.has(i)
+                          ? 'bg-zinc-800 text-zinc-500 cursor-default'
+                          : 'bg-emerald-800/50 text-emerald-300 hover:bg-emerald-800'
+                      )}
                     >
                       <BookOpen className="h-3 w-3" />
-                      Save to Inbox
+                      {savedSuggestions.has(i) ? 'Saved' : 'Save to Inbox'}
                     </button>
                   </div>
                 ))}
