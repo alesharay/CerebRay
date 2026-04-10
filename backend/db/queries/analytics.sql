@@ -63,6 +63,19 @@ FROM conversations conv
 LEFT JOIN notes n ON n.source_chat_id = conv.id
 WHERE conv.user_id = $1;
 
+-- name: GetLifecycleTrend :many
+SELECT
+    date_trunc('week', ne.created_at)::timestamptz as week,
+    ne.to_status,
+    count(*)::bigint as count
+FROM note_events ne
+WHERE ne.user_id = $1
+    AND ne.from_status = 'fleeting'
+    AND ne.to_status IN ('active', 'sleeping', 'archived')
+    AND ne.created_at >= $2
+GROUP BY week, ne.to_status
+ORDER BY week ASC;
+
 -- name: GetStaleNotes :many
 SELECT id, title, note_type, updated_at
 FROM notes

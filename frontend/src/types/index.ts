@@ -168,9 +168,16 @@ export interface AnalyticsAIUsage {
   requests: number
 }
 
+export interface LifecycleTrendPoint {
+  week: string
+  action: string
+  count: number
+}
+
 export interface AnalyticsData {
   inbox: InboxItem[]
   lifecycle: LifecycleEntry[]
+  lifecycle_trend: LifecycleTrendPoint[]
   strength: StrengthScore
   conversion: ConversionRate
   ai_usage: AnalyticsAIUsage

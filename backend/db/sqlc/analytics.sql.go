@@ -184,6 +184,51 @@ func (q *Queries) GetLifecycleMetrics(ctx context.Context, arg GetLifecycleMetri
 	return items, nil
 }
 
+const getLifecycleTrend = `-- name: GetLifecycleTrend :many
+SELECT
+    date_trunc('week', ne.created_at)::timestamptz as week,
+    ne.to_status,
+    count(*)::bigint as count
+FROM note_events ne
+WHERE ne.user_id = $1
+    AND ne.from_status = 'fleeting'
+    AND ne.to_status IN ('active', 'sleeping', 'archived')
+    AND ne.created_at >= $2
+GROUP BY week, ne.to_status
+ORDER BY week ASC
+`
+
+type GetLifecycleTrendParams struct {
+	UserID    int64     `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type GetLifecycleTrendRow struct {
+	Week     time.Time  `json:"week"`
+	ToStatus NoteStatus `json:"to_status"`
+	Count    int64      `json:"count"`
+}
+
+func (q *Queries) GetLifecycleTrend(ctx context.Context, arg GetLifecycleTrendParams) ([]GetLifecycleTrendRow, error) {
+	rows, err := q.db.Query(ctx, getLifecycleTrend, arg.UserID, arg.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetLifecycleTrendRow{}
+	for rows.Next() {
+		var i GetLifecycleTrendRow
+		if err := rows.Scan(&i.Week, &i.ToStatus, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNoteTypeDistribution = `-- name: GetNoteTypeDistribution :many
 SELECT note_type, count(*) as count
 FROM notes

@@ -141,13 +141,20 @@ type staleNote struct {
 	StaleDays int    `json:"stale_days"`
 }
 
+type lifecycleTrendPoint struct {
+	Week   string `json:"week"`
+	Action string `json:"action"`
+	Count  int64  `json:"count"`
+}
+
 type analyticsResponse struct {
-	Inbox          []inboxItem      `json:"inbox"`
-	Lifecycle      []lifecycleEntry `json:"lifecycle"`
-	Strength       strengthScore    `json:"strength"`
-	Conversion     conversionRate   `json:"conversion"`
-	AIUsage        aiUsageData      `json:"ai_usage"`
-	StaleNotes     []staleNote      `json:"stale_notes"`
+	Inbox          []inboxItem           `json:"inbox"`
+	Lifecycle      []lifecycleEntry      `json:"lifecycle"`
+	LifecycleTrend []lifecycleTrendPoint  `json:"lifecycle_trend"`
+	Strength       strengthScore         `json:"strength"`
+	Conversion     conversionRate        `json:"conversion"`
+	AIUsage        aiUsageData           `json:"ai_usage"`
+	StaleNotes     []staleNote           `json:"stale_notes"`
 }
 
 type aiUsageData struct {
@@ -205,6 +212,33 @@ func (h *DashboardHandlers) Analytics(w http.ResponseWriter, r *http.Request) {
 			Action:          action,
 			Count:           row.TransitionCount,
 			AvgDwellSeconds: row.AvgDwellSeconds,
+		}
+	}
+
+	// Lifecycle trend (weekly counts over last 90 days)
+	trendRows, err := h.queries.GetLifecycleTrend(ctx, sqlc.GetLifecycleTrendParams{
+		UserID:    userID,
+		CreatedAt: since,
+	})
+	if err != nil {
+		Error(w, http.StatusInternalServerError, "failed to get lifecycle trend")
+		return
+	}
+	trend := make([]lifecycleTrendPoint, len(trendRows))
+	for i, row := range trendRows {
+		action := "unknown"
+		switch row.ToStatus {
+		case sqlc.NoteStatusActive:
+			action = "promoted"
+		case sqlc.NoteStatusSleeping:
+			action = "slept"
+		case sqlc.NoteStatusArchived:
+			action = "archived"
+		}
+		trend[i] = lifecycleTrendPoint{
+			Week:   row.Week.Format("2006-01-02"),
+			Action: action,
+			Count:  row.Count,
 		}
 	}
 
@@ -328,8 +362,9 @@ func (h *DashboardHandlers) Analytics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	JSON(w, http.StatusOK, analyticsResponse{
-		Inbox:     inbox,
-		Lifecycle: lifecycle,
+		Inbox:          inbox,
+		Lifecycle:      lifecycle,
+		LifecycleTrend: trend,
 		Strength:  strength,
 		Conversion: conversionRate{
 			TotalConversations:     convRate.TotalConversations,

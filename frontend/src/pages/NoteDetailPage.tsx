@@ -6,12 +6,13 @@ import { addTagToNote } from '../api/tags'
 import { getConversation } from '../api/chat'
 import { useChat } from '../hooks/useSSE'
 import { parseZettelSuggestions, stripSuggestionBlocks } from '../lib/zettelParser'
-import type { Note, Connection, NoteType, NoteTLP, Message } from '../types'
+import { createNote } from '../api/notes'
+import type { Note, Connection, NoteType, NoteTLP, Message, ZettelSuggestion } from '../types'
 import { cn } from '../lib/utils'
 import {
   ArrowLeft, Save, Trash2, Moon, Archive, CloudFog,
   Link2, Plus, Loader2, ArrowRight, ArrowDownLeft, Search,
-  Send, Sparkles, StopCircle, MessageSquare,
+  Send, Sparkles, StopCircle, MessageSquare, BookOpen, RefreshCw,
 } from 'lucide-react'
 
 const noteTypes: NoteType[] = ['concept', 'theory', 'insight', 'quote', 'reference', 'question', 'structure', 'guide']
@@ -55,7 +56,7 @@ export function NoteDetailPage() {
   const [chatInput, setChatInput] = useState('')
   const expandTriggered = useRef(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const { streaming, streamedText, error: chatError, send, cancel } = useChat()
+  const { streaming, streamedText, suggestions: chatSuggestions, error: chatError, send, cancel } = useChat()
 
   // Load note, connections, and chat history together
   useEffect(() => {
@@ -250,6 +251,32 @@ export function NoteDetailPage() {
         created_at: new Date().toISOString(),
       }])
     })
+  }
+
+  const handleSaveSuggestion = async (suggestion: ZettelSuggestion) => {
+    try {
+      await createNote({
+        title: suggestion.title,
+        note_type: suggestion.type,
+        summary: suggestion.summary,
+        laymans_terms: suggestion.laymans_terms,
+        analogy: suggestion.analogy,
+        core_idea: suggestion.core_idea,
+        body: suggestion.body,
+        components: suggestion.components,
+        why_it_matters: suggestion.why_it_matters,
+        examples: suggestion.examples,
+        templates: suggestion.templates,
+        source_chat_id: note?.source_chat_id || undefined,
+      })
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleRefreshFromChat = () => {
+    if (!note?.source_chat_id || streaming) return
+    triggerExpand(note.source_chat_id, note.title, note.body || '', note.id)
   }
 
   if (loading) {
@@ -573,6 +600,16 @@ export function NoteDetailPage() {
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save
         </button>
+        {note.source_chat_id && (
+          <button
+            onClick={handleRefreshFromChat}
+            disabled={streaming}
+            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 disabled:opacity-50"
+          >
+            <RefreshCw className={cn('h-4 w-4', streaming && 'animate-spin')} />
+            Refresh from chat
+          </button>
+        )}
         <button
           onClick={handleDelete}
           className="flex items-center gap-2 rounded-lg border border-red-800/50 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/20"
@@ -615,6 +652,39 @@ export function NoteDetailPage() {
               <div className="mr-8 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
                 <div className="mb-1 text-xs font-medium text-zinc-500">AI</div>
                 <div className="whitespace-pre-wrap">{stripSuggestionBlocks(streamedText) || 'Thinking...'}</div>
+              </div>
+            )}
+
+            {/* Suggestion cards from follow-up chat */}
+            {chatSuggestions.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-zinc-400">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Suggested notes
+                </div>
+                {chatSuggestions.map((s, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-zinc-700 bg-zinc-900 p-4"
+                  >
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className="font-medium text-zinc-100">{s.title}</span>
+                      <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                        {s.type}
+                      </span>
+                    </div>
+                    {s.summary && (
+                      <p className="mb-3 text-sm text-zinc-400">{s.summary}</p>
+                    )}
+                    <button
+                      onClick={() => handleSaveSuggestion(s)}
+                      className="flex items-center gap-1.5 rounded bg-emerald-800/50 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-800"
+                    >
+                      <BookOpen className="h-3 w-3" />
+                      Save to Inbox
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
 

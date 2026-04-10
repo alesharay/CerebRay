@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getAnalytics } from '../api/dashboard'
-import type { AnalyticsData, InboxItem, LifecycleEntry, StaleNote } from '../types'
+import type { AnalyticsData, InboxItem, LifecycleEntry, LifecycleTrendPoint, StaleNote } from '../types'
 import {
   Inbox, Brain, MessageSquare,
   Zap, Clock, TrendingUp, AlertCircle, Sparkles,
@@ -118,7 +118,38 @@ function InboxSection({ items }: { items: InboxItem[] }) {
   )
 }
 
-function LifecycleSection({ entries }: { entries: LifecycleEntry[] }) {
+function TrendSparkline({ points, color }: { points: number[]; color: string }) {
+  if (points.length < 2) return null
+  const max = Math.max(...points, 1)
+  const w = 64
+  const h = 20
+  const stepX = w / (points.length - 1)
+  const path = points
+    .map((v, i) => {
+      const x = i * stepX
+      const y = h - (v / max) * (h - 2) - 1
+      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+
+  return (
+    <svg width={w} height={h} className="inline-block align-middle">
+      <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function buildSparklineData(trend: LifecycleTrendPoint[], action: string): number[] {
+  // Get all unique weeks across all actions for consistent x-axis
+  const weeks = [...new Set(trend.map((t) => t.week))].sort()
+  const countByWeek: Record<string, number> = {}
+  for (const t of trend) {
+    if (t.action === action) countByWeek[t.week] = t.count
+  }
+  return weeks.map((w) => countByWeek[w] || 0)
+}
+
+function LifecycleSection({ entries, trend }: { entries: LifecycleEntry[]; trend: LifecycleTrendPoint[] }) {
   const total = entries.reduce((sum, e) => sum + e.count, 0)
   if (total === 0) {
     return (
@@ -129,10 +160,10 @@ function LifecycleSection({ entries }: { entries: LifecycleEntry[] }) {
     )
   }
 
-  const actionConfig: Record<string, { label: string; color: string; bg: string }> = {
-    promoted: { label: 'Promoted', color: 'text-emerald-400', bg: 'bg-emerald-400' },
-    slept: { label: 'Slept', color: 'text-purple-400', bg: 'bg-purple-400' },
-    archived: { label: 'Archived', color: 'text-zinc-400', bg: 'bg-zinc-500' },
+  const actionConfig: Record<string, { label: string; color: string; bg: string; hex: string }> = {
+    promoted: { label: 'Promoted', color: 'text-emerald-400', bg: 'bg-emerald-400', hex: '#34d399' },
+    slept: { label: 'Slept', color: 'text-purple-400', bg: 'bg-purple-400', hex: '#a78bfa' },
+    archived: { label: 'Archived', color: 'text-zinc-400', bg: 'bg-zinc-500', hex: '#71717a' },
   }
 
   return (
@@ -155,11 +186,17 @@ function LifecycleSection({ entries }: { entries: LifecycleEntry[] }) {
       <div className="grid grid-cols-3 gap-3">
         {entries.map((e) => {
           const config = actionConfig[e.action] || actionConfig.archived
+          const sparkData = buildSparklineData(trend, e.action)
           return (
             <div key={e.action} className="text-center">
               <div className={cn('text-xl font-bold', config.color)}>{e.count}</div>
               <div className="text-xs text-zinc-500">{config.label}</div>
               <div className="mt-0.5 text-xs text-zinc-600">avg {formatDwell(e.avg_dwell_seconds)}</div>
+              {sparkData.length >= 2 && (
+                <div className="mt-1.5 flex justify-center">
+                  <TrendSparkline points={sparkData} color={config.hex} />
+                </div>
+              )}
             </div>
           )
         })}
@@ -300,7 +337,7 @@ export function DashboardPage() {
       <InboxSection items={data.inbox} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <LifecycleSection entries={data.lifecycle} />
+        <LifecycleSection entries={data.lifecycle} trend={data.lifecycle_trend || []} />
         <StrengthSection data={data.strength} />
       </div>
 
