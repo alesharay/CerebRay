@@ -168,13 +168,13 @@ Design principles for the dashboard and all pages:
 
 ### 11. Testing
 
-- [ ] Unit tests for Go handlers (table-driven with fake stores)
-- [ ] Unit tests for auth middleware
-- [ ] Integration tests against live PostgreSQL
+- [x] Unit tests for Go handlers (table-driven with fake Querier)
+- [x] Unit tests for auth middleware
+- [ ] Integration tests against live PostgreSQL (testcontainers)
 - [x] Frontend testing infrastructure (Vitest + RTL + jsdom configured)
-- [~] Frontend component tests (Vitest + RTL) - initial tests for utils, auth store, landing page
+- [x] Frontend component tests (Vitest + RTL) - parser, NoteCard, Sidebar, Dashboard, Echoes, Landing, authStore, utils
 - [ ] End-to-end tests (Playwright)
-- [ ] Smoke test against live deployment
+- [x] Smoke test against live deployment (task test:smoke)
 
 ### 12. Observability
 
@@ -297,6 +297,7 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 
 ## Notes and Decisions Log
 
+- **2026-04-10**: Phase 11 (Testing) mostly complete. Enabled sqlc Querier interface for handler mocking. Backend: 28 handler unit tests (notes CRUD/promote/search, chat usage, health, helpers) + 5 auth middleware tests with miniredis. Frontend: 43 tests across 8 files (zettel parser, NoteCard, Sidebar, DashboardPage, EchoesPage, LandingPage, authStore, utils). Added smoke test Taskfile task. Integration tests (testcontainers) and Playwright e2e deferred.
 - **2026-04-10**: Phase 12 (Observability) complete. Added Prometheus metrics via `internal/metrics/` package: HTTP request counter/histogram/gauge and AI token/request/duration metrics. Chi middleware records HTTP metrics using route patterns for low cardinality. `/metrics` endpoint exposed unauthenticated for Prometheus scraping. Enhanced structured logging with `request_id` correlation in all request logs, plus `RequestLogger` context helper for handler-level logs with user_id. K8s pod annotations added for Prometheus auto-discovery. PostHog skipped.
 - **2026-04-10**: Phase 10e/10f complete. Interactive knowledge graph with zoom/pan (d3-zoom), drag (d3-drag), hover highlighting, HTML tooltips, color legend, search/filter, and SPA navigation. Cluster visualization deferred until 100+ notes. Echoes page simplified to title + age + actions. Chat follow-up suggestions with Save to Inbox cards. Refresh from chat action on note detail page. Dashboard trend sparklines via new GetLifecycleTrend backend query (weekly counts over 90 days).
 - **2026-04-10**: Workflow refactor complete (Phase 10). Inbox is now quick-capture, promote triggers AI expansion, note detail page has embedded chat. Chat page removed from nav. Added Phase 10e (interactive knowledge graph) and 10f (UX fixes) based on user testing. Broken d3 zoom placeholder fixed. SSE buffer flush bug found and fixed (done event not processed). Zettel parser upgraded for multi-line field content. Deployed to homelab k8s with all infrastructure operational.
