@@ -164,9 +164,9 @@ Design principles for the dashboard and all pages:
 
 ### 13. Deployment
 
-- [ ] Backend Dockerfile (multi-stage Go build, Alpine runtime)
-- [ ] Frontend Dockerfile (Vite build + nginx:alpine runtime)
-- [ ] docker-compose.prod.yml (full production stack)
+- [x] Backend Dockerfile (multi-stage Go build, Alpine runtime)
+- [x] Frontend Dockerfile (Vite build + nginx:alpine runtime)
+- [x] docker-compose.prod.yml (full production stack)
 - [ ] Images pushed to registry.homelab
 - [ ] Flux CD image automation (ts-* tag pattern)
 - [ ] k8s manifests generated via task k8s:manifests
