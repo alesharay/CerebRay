@@ -117,7 +117,11 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 	})
 	if noteErr == nil && len(dbMessages) == 1 {
 		// First message in a promoted note's conversation - use expand prompt
-		systemPrompt = ai.BuildExpandPrompt(linkedNote.Title, tagNames, noteTitles)
+		rawThought := linkedNote.Title
+		if linkedNote.Body != "" {
+			rawThought = linkedNote.Title + "\n\n" + linkedNote.Body
+		}
+		systemPrompt = ai.BuildExpandPrompt(rawThought, tagNames, noteTitles)
 	} else {
 		systemPrompt = ai.BuildSystemPrompt(tagNames, noteTitles)
 	}

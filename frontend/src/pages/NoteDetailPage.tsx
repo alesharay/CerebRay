@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { getNote, updateNote, deleteNote, sleepNote, archiveNote, searchNotes } from '../api/notes'
+import { getNote, updateNote, deleteNote, promoteNote, sleepNote, archiveNote, searchNotes } from '../api/notes'
 import { listConnectionsForNote, createConnection } from '../api/connections'
 import { addTagToNote } from '../api/tags'
 import { getConversation } from '../api/chat'
@@ -9,7 +9,7 @@ import { parseZettelSuggestions, stripSuggestionBlocks } from '../lib/zettelPars
 import type { Note, Connection, NoteType, NoteTLP, Message } from '../types'
 import { cn } from '../lib/utils'
 import {
-  ArrowLeft, Save, Trash2, Moon, Archive,
+  ArrowLeft, Save, Trash2, Moon, Archive, CloudFog,
   Link2, Plus, Loader2, ArrowRight, ArrowDownLeft, Search,
   Send, Sparkles, StopCircle, MessageSquare,
 } from 'lucide-react'
@@ -83,12 +83,13 @@ export function NoteDetailPage() {
   }, [id, navigate])
 
   // Auto-expand on promote: trigger AI research after chat history loads
-  const triggerExpand = (convoId: number, title: string, noteId: number) => {
+  const triggerExpand = (convoId: number, title: string, body: string, noteId: number) => {
+    const thought = body ? `${title}\n\n${body}` : title
     const userMsg: Message = {
       id: Date.now() - 1,
       conversation_id: convoId,
       role: 'user',
-      content: `Expand this thought into a full Zettel: ${title}`,
+      content: `Expand this thought into a full Zettel: ${thought}`,
       input_tokens: 0,
       output_tokens: 0,
       model: '',
@@ -96,7 +97,7 @@ export function NoteDetailPage() {
     }
     setChatMessages(prev => [...prev, userMsg])
 
-    send(convoId, `Expand this thought into a full Zettel: ${title}`, (fullText) => {
+    send(convoId, `Expand this thought into a full Zettel: ${thought}`, (fullText) => {
       const suggestions = parseZettelSuggestions(fullText)
       console.log('[cerebray] parsed suggestions:', suggestions.length)
       if (suggestions.length > 0) {
@@ -150,7 +151,7 @@ export function NoteDetailPage() {
     if (hasAssistant) return
 
     expandTriggered.current = true
-    queueMicrotask(() => triggerExpand(note.source_chat_id!, note.title, note.id))
+    queueMicrotask(() => triggerExpand(note.source_chat_id!, note.title, note.body || '', note.id))
   }, [promoted, chatLoadId, note, chatMessages]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll chat to bottom when streaming
@@ -268,10 +269,84 @@ export function NoteDetailPage() {
   if (!note) return null
 
   const expanding = promoted && streaming
+  const isFleeting = note.status === 'fleeting'
 
   const outgoing = connections.filter((c) => c.direction === 'outgoing')
   const incoming = connections.filter((c) => c.direction === 'incoming')
 
+  const handlePromote = async () => {
+    const result = await promoteNote(note.id)
+    navigate(`/codex/${result.note.id}?promoted=true`)
+  }
+
+  const handleDiscard = async () => {
+    await sleepNote(note.id)
+    navigate('/inbox')
+  }
+
+  // Fleeting note: simple scratchpad view
+  if (isFleeting) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6 pb-12">
+        <div className="flex items-center gap-3">
+          <Link to="/inbox" className="rounded p-1 text-zinc-400 hover:text-white">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <span className="rounded bg-amber-900/50 px-2 py-0.5 text-xs font-medium text-amber-300">fleeting</span>
+        </div>
+
+        <input
+          type="text"
+          value={draft.title || ''}
+          onChange={(e) => handleChange('title', e.target.value)}
+          className="w-full bg-transparent text-2xl font-bold text-zinc-100 focus:outline-none"
+          placeholder="What's the thought?"
+          autoFocus
+        />
+
+        <textarea
+          value={(draft.body as string) || ''}
+          onChange={(e) => handleChange('body', e.target.value)}
+          rows={8}
+          className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-200 placeholder-zinc-600 focus:border-zinc-600 focus:outline-none"
+          placeholder="Jot down your thoughts, context, questions... anything that helps capture what you're thinking about."
+        />
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save
+          </button>
+          <button
+            onClick={handlePromote}
+            className="flex items-center gap-2 rounded-lg bg-emerald-900/30 px-4 py-2 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-900/50"
+          >
+            <Sparkles className="h-4 w-4" />
+            Promote
+          </button>
+          <button
+            onClick={handleDiscard}
+            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-500 transition-colors hover:bg-zinc-800"
+          >
+            <CloudFog className="h-4 w-4" />
+            Discard
+          </button>
+          <button
+            onClick={handleDelete}
+            className="ml-auto flex items-center gap-2 rounded-lg border border-red-800/50 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/20"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Active/linked/sleeping/archived: full Zettel view
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       {/* Header */}
@@ -320,7 +395,6 @@ export function NoteDetailPage() {
 
         <span className={cn(
           'rounded px-2 py-0.5 text-xs font-medium',
-          note.status === 'fleeting' && 'bg-amber-900/50 text-amber-300',
           note.status === 'sleeping' && 'bg-purple-900/50 text-purple-300',
           note.status === 'active' && 'bg-emerald-900/50 text-emerald-300',
           note.status === 'linked' && 'bg-blue-900/50 text-blue-300',

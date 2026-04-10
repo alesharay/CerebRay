@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { listNotes, createNote, promoteNote, sleepNote } from '../api/notes'
 import type { Note } from '../types'
 import { Plus, Sparkles, CloudFog, Clock } from 'lucide-react'
@@ -110,13 +110,13 @@ export function InboxPage() {
               key={note.id}
               className="flex items-center justify-between rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-4 py-3 transition-colors hover:border-zinc-700/60"
             >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-zinc-200">{note.title}</div>
+              <Link to={`/codex/${note.id}`} className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-zinc-200 hover:text-white">{note.title}</div>
                 <div className="mt-0.5 flex items-center gap-1 text-xs text-zinc-600">
                   <Clock className="h-3 w-3" />
                   {formatAge(note.created_at)}
                 </div>
-              </div>
+              </Link>
 
               <div className="ml-4 flex items-center gap-2">
                 <button
