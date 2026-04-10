@@ -275,8 +275,19 @@ export function NoteDetailPage() {
   const incoming = connections.filter((c) => c.direction === 'incoming')
 
   const handlePromote = async () => {
+    // Save any scratchpad edits before promoting
+    if (draft.title || draft.body) {
+      await updateNote(note.id, draft).catch(() => {})
+    }
     const result = await promoteNote(note.id)
-    navigate(`/codex/${result.note.id}?promoted=true`)
+    // Reload the full note (with source_chat_id now set)
+    const fresh = await getNote(result.note.id)
+    setNote(fresh)
+    setDraft(fresh)
+    setChatMessages([])
+    setChatLoadId(fresh.id)
+    expandTriggered.current = false
+    navigate(`/codex/${result.note.id}?promoted=true`, { replace: true })
   }
 
   const handleDiscard = async () => {
