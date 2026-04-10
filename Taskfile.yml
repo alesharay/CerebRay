@@ -133,6 +133,15 @@ tasks:
     cmds:
       - go test -short ./...
 
+  backend:test:integration:
+    desc: Run integration tests (requires Docker via Colima)
+    dir: "{{.BACKEND_DIR}}"
+    env:
+      DOCKER_HOST: unix:///Users/aray/.colima/default/docker.sock
+      TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: /var/run/docker.sock
+    cmds:
+      - go test -tags=integration -v -timeout 180s ./internal/handlers/...
+
   backend:lint:
     desc: Run go vet on all packages
     dir: "{{.BACKEND_DIR}}"
