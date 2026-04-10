@@ -147,12 +147,12 @@ export function NoteDetailPage() {
   useEffect(() => {
     if (!promoted || !note?.source_chat_id || expandTriggered.current) return
     if (chatLoadId !== note.id) return // wait for chat history to load for this note
-    const hasAssistant = chatMessages.some(m => m.role === 'assistant')
-    if (hasAssistant) return
+    // Only skip if note already has structured content from a previous expansion
+    if (note.summary) return
 
     expandTriggered.current = true
     queueMicrotask(() => triggerExpand(note.source_chat_id!, note.title, note.body || '', note.id))
-  }, [promoted, chatLoadId, note, chatMessages]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [promoted, chatLoadId, note]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll chat to bottom when streaming
   useEffect(() => {
