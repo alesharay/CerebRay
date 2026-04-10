@@ -10,7 +10,7 @@ import { createNote } from '../api/notes'
 import type { Note, Connection, NoteType, NoteTLP, Message, ZettelSuggestion } from '../types'
 import { cn } from '../lib/utils'
 import {
-  ArrowLeft, Save, Trash2, Moon, Archive, CloudFog,
+  ArrowLeft, ArrowUpCircle, Save, Trash2, Archive, CloudFog,
   Link2, Plus, Loader2, ArrowRight, ArrowDownLeft, Search,
   Send, Sparkles, StopCircle, MessageSquare, BookOpen, RefreshCw,
 } from 'lucide-react'
@@ -378,7 +378,71 @@ export function NoteDetailPage() {
     )
   }
 
-  // Active/linked/sleeping/archived: full Zettel view
+  // Sleeping note: simple view with promote/archive, not the full Zettel form
+  if (note.status === 'sleeping') {
+    const ageDiff = Date.now() - new Date(note.created_at).getTime()
+    const ageDays = Math.floor(ageDiff / 86400000)
+    const ageLabel = ageDays < 1 ? 'today' : ageDays === 1 ? '1 day old' : `${ageDays} days old`
+
+    return (
+      <div className="mx-auto max-w-2xl space-y-6 pb-12">
+        <div className="flex items-center gap-3">
+          <Link to="/echoes" className="rounded p-1 text-zinc-400 hover:text-white">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <span className="rounded bg-purple-900/50 px-2 py-0.5 text-xs font-medium text-purple-300">sleeping</span>
+          <span className="text-xs text-zinc-500">{ageLabel}</span>
+        </div>
+
+        <h1 className="text-2xl font-bold text-zinc-100">{note.title || 'Untitled'}</h1>
+
+        {note.summary && (
+          <p className="text-sm text-zinc-400">{note.summary}</p>
+        )}
+
+        {note.body && (
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300 whitespace-pre-wrap">
+            {note.body}
+          </div>
+        )}
+
+        {note.tags && note.tags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {note.tags.map((tag) => (
+              <span key={tag} className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => handleStatusAction((id) => promoteNote(id).then((r) => r.note))}
+            className="flex items-center gap-2 rounded-lg bg-emerald-900/30 px-4 py-2 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-900/50"
+          >
+            <ArrowUpCircle className="h-4 w-4" />
+            Promote to Codex
+          </button>
+          <button
+            onClick={() => handleStatusAction(archiveNote)}
+            className="flex items-center gap-2 rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-500 transition-colors hover:bg-zinc-800"
+          >
+            <Archive className="h-4 w-4" />
+            Archive
+          </button>
+          <button
+            onClick={handleDelete}
+            className="ml-auto flex items-center gap-2 rounded-lg border border-red-800/50 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/20"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Active/linked/archived: full Zettel view
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-12">
       {/* Header */}
@@ -427,7 +491,6 @@ export function NoteDetailPage() {
 
         <span className={cn(
           'rounded px-2 py-0.5 text-xs font-medium',
-          note.status === 'sleeping' && 'bg-purple-900/50 text-purple-300',
           note.status === 'active' && 'bg-emerald-900/50 text-emerald-300',
           note.status === 'linked' && 'bg-blue-900/50 text-blue-300',
           note.status === 'archived' && 'bg-zinc-800 text-zinc-400',
@@ -436,11 +499,6 @@ export function NoteDetailPage() {
         </span>
 
         <div className="ml-auto flex gap-1">
-          {note.status === 'sleeping' && (
-            <button onClick={() => handleStatusAction(sleepNote)} className="rounded p-1.5 text-purple-400 hover:bg-purple-900/30" title="Sleep">
-              <Moon className="h-4 w-4" />
-            </button>
-          )}
           {(note.status === 'active' || note.status === 'linked') && (
             <button onClick={() => handleStatusAction(archiveNote)} className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800" title="Archive">
               <Archive className="h-4 w-4" />
