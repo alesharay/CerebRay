@@ -50,6 +50,9 @@ export function NoteDetailPage() {
   const [linkLabel, setLinkLabel] = useState('')
   const [showLinkBuilder, setShowLinkBuilder] = useState(false)
 
+  // Timestamp captured once on mount for age calculations (avoids impure Date.now in render)
+  const [mountTime] = useState(() => Date.now())
+
   // Chat state
   const [chatMessages, setChatMessages] = useState<Message[]>([])
   const [chatLoadId, setChatLoadId] = useState<number | null>(null)
@@ -380,9 +383,6 @@ export function NoteDetailPage() {
 
   // Sleeping note: simple view with promote/archive, not the full Zettel form
   if (note.status === 'sleeping') {
-    const ageDiff = Date.now() - new Date(note.created_at).getTime()
-    const ageDays = Math.floor(ageDiff / 86400000)
-    const ageLabel = ageDays < 1 ? 'today' : ageDays === 1 ? '1 day old' : `${ageDays} days old`
 
     return (
       <div className="mx-auto max-w-2xl space-y-6 pb-12">
@@ -391,7 +391,12 @@ export function NoteDetailPage() {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <span className="rounded bg-purple-900/50 px-2 py-0.5 text-xs font-medium text-purple-300">sleeping</span>
-          <span className="text-xs text-zinc-500">{ageLabel}</span>
+          <span className="text-xs text-zinc-500">
+            {(() => {
+              const ageDays = Math.floor((mountTime - new Date(note.created_at).getTime()) / 86400000)
+              return ageDays < 1 ? 'today' : ageDays === 1 ? '1 day old' : `${ageDays} days old`
+            })()}
+          </span>
         </div>
 
         <h1 className="text-2xl font-bold text-zinc-100">{note.title || 'Untitled'}</h1>
