@@ -98,20 +98,26 @@ export function NoteDetailPage() {
       const suggestions = parseZettelSuggestions(fullText)
       if (suggestions.length > 0) {
         const s = suggestions[0]
-        const updates: Partial<Note> = {
-          title: s.title || title,
-          summary: s.summary,
-          core_idea: s.core_idea,
-          laymans_terms: s.laymans_terms,
-          analogy: s.analogy,
-          body: s.body,
-          components: s.components,
-          why_it_matters: s.why_it_matters,
-          examples: s.examples,
-          templates: s.templates,
-          note_type: s.type as NoteType,
-        }
-        updateNote(noteId, updates).then((updated) => {
+        // Must include status/tlp/additional - backend does a full field replace
+        getNote(noteId).then((current) => {
+          const updates: Partial<Note> = {
+            title: s.title || title,
+            summary: s.summary,
+            core_idea: s.core_idea,
+            laymans_terms: s.laymans_terms,
+            analogy: s.analogy,
+            body: s.body,
+            components: s.components,
+            why_it_matters: s.why_it_matters,
+            examples: s.examples,
+            templates: s.templates,
+            note_type: s.type as NoteType,
+            status: current.status,
+            tlp: current.tlp,
+            additional: current.additional,
+          }
+          return updateNote(noteId, updates)
+        }).then((updated) => {
           setNote(updated)
           setDraft(updated)
         }).catch(() => {})
