@@ -9,7 +9,7 @@ import {
   type SimulationNodeDatum, type SimulationLinkDatum,
 } from 'd3-force'
 import { select } from 'd3-selection'
-import { zoom as d3Zoom, type ZoomBehavior } from 'd3-zoom'
+import { zoom as d3Zoom, type ZoomBehavior, zoomTransform } from 'd3-zoom'
 import { drag as d3Drag } from 'd3-drag'
 
 interface GraphNode extends SimulationNodeDatum {
@@ -169,7 +169,7 @@ function ForceGraph({
     node.call(dragBehavior)
 
     // Hover highlighting
-    node.on('mouseover', (event, d) => {
+    node.on('mouseover', (_event, d) => {
       // Dim unconnected elements
       node.attr('opacity', (o) =>
         o.id === d.id || adjacency.has(`${d.id}-${o.id}`) ? 1 : 0.15,
@@ -187,7 +187,7 @@ function ForceGraph({
       const svgRect = svgRef.current!.getBoundingClientRect()
       const wrapperRect = wrapperRef.current!.getBoundingClientRect()
       // Get the current transform from the zoom
-      const transform = svg.node()!.__zoom || { x: 0, y: 0, k: 1 }
+      const transform = zoomTransform(svg.node()!)
       const screenX = (d.x || 0) * transform.k + transform.x
       const screenY = (d.y || 0) * transform.k + transform.y
       setTooltip({
