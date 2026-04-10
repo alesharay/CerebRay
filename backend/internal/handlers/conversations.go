@@ -9,10 +9,10 @@ import (
 )
 
 type ConversationHandlers struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 }
 
-func NewConversationHandlers(q *sqlc.Queries) *ConversationHandlers {
+func NewConversationHandlers(q sqlc.Querier) *ConversationHandlers {
 	return &ConversationHandlers{queries: q}
 }
 

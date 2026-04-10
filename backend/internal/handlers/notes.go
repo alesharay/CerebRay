@@ -10,10 +10,10 @@ import (
 
 // NoteHandlers contains handlers for note operations.
 type NoteHandlers struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 }
 
-func NewNoteHandlers(q *sqlc.Queries) *NoteHandlers {
+func NewNoteHandlers(q sqlc.Querier) *NoteHandlers {
 	return &NoteHandlers{queries: q}
 }
 

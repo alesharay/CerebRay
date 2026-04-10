@@ -9,10 +9,10 @@ import (
 )
 
 type GlossaryHandlers struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 }
 
-func NewGlossaryHandlers(q *sqlc.Queries) *GlossaryHandlers {
+func NewGlossaryHandlers(q sqlc.Querier) *GlossaryHandlers {
 	return &GlossaryHandlers{queries: q}
 }
 

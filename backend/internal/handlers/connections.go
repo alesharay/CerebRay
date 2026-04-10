@@ -9,10 +9,10 @@ import (
 )
 
 type ConnectionHandlers struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 }
 
-func NewConnectionHandlers(q *sqlc.Queries) *ConnectionHandlers {
+func NewConnectionHandlers(q sqlc.Querier) *ConnectionHandlers {
 	return &ConnectionHandlers{queries: q}
 }
 

@@ -9,10 +9,10 @@ import (
 )
 
 type TagHandlers struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 }
 
-func NewTagHandlers(q *sqlc.Queries) *TagHandlers {
+func NewTagHandlers(q sqlc.Querier) *TagHandlers {
 	return &TagHandlers{queries: q}
 }
 

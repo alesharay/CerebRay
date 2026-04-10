@@ -255,6 +255,28 @@ tasks:
       - backend:test
       - frontend:test
 
+  test:smoke:
+    desc: Smoke test against live deployment (health, metrics, auth guard)
+    cmds:
+      - |
+        URL="https://{{.APP_DOMAIN}}"
+        PASS=true
+
+        printf "Health check... "
+        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "$URL/health")
+        if [ "$STATUS" = "200" ]; then echo "OK"; else echo "FAIL ($STATUS)"; PASS=false; fi
+
+        printf "Metrics endpoint... "
+        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "$URL/metrics")
+        if [ "$STATUS" = "200" ]; then echo "OK"; else echo "FAIL ($STATUS)"; PASS=false; fi
+
+        printf "Auth guard (expect 401)... "
+        STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "$URL/api/v1/auth/me")
+        if [ "$STATUS" = "401" ]; then echo "OK"; else echo "FAIL ($STATUS)"; PASS=false; fi
+
+        if [ "$PASS" = "false" ]; then echo "Smoke test FAILED"; exit 1; fi
+        echo "All smoke tests passed"
+
   build:
     desc: Build backend binary and frontend production bundle
     deps:

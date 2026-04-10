@@ -14,13 +14,13 @@ import (
 
 // ChatHandlers manages AI-powered chat endpoints.
 type ChatHandlers struct {
-	queries  *sqlc.Queries
+	queries  sqlc.Querier
 	provider ai.Provider
 	metrics  *metrics.Metrics
 }
 
 // NewChatHandlers creates a new ChatHandlers instance.
-func NewChatHandlers(q *sqlc.Queries, provider ai.Provider, m *metrics.Metrics) *ChatHandlers {
+func NewChatHandlers(q sqlc.Querier, provider ai.Provider, m *metrics.Metrics) *ChatHandlers {
 	return &ChatHandlers{queries: q, provider: provider, metrics: m}
 }
 

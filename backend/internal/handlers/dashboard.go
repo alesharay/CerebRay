@@ -9,10 +9,10 @@ import (
 )
 
 type DashboardHandlers struct {
-	queries *sqlc.Queries
+	queries sqlc.Querier
 }
 
-func NewDashboardHandlers(q *sqlc.Queries) *DashboardHandlers {
+func NewDashboardHandlers(q sqlc.Querier) *DashboardHandlers {
 	return &DashboardHandlers{queries: q}
 }
 
