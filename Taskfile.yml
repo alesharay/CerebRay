@@ -320,11 +320,16 @@ tasks:
         fi
         python3 -c "
         import json, os
+        db_pass = os.environ.get('K8S_DATABASE_PASSWORD', 'cerebray')
+        redis_pass = os.environ.get('K8S_REDIS_PASSWORD', 'cerebray')
         data = {
-            'session-secret':     os.environ['SESSION_SECRET'],
-            'database-url':       os.environ['DATABASE_URL'],
-            'redis-url':          os.environ['REDIS_URL'],
-            'anthropic-api-key':  os.environ['ANTHROPIC_API_KEY'],
+            'session-secret':         os.environ['SESSION_SECRET'],
+            'database-url':           'postgres://cerebray:' + db_pass + '@postgresql.cerebray.svc.cluster.local:5432/cerebray?sslmode=disable',
+            'database-password':      db_pass,
+            'redis-url':              'redis://:' + redis_pass + '@redis-master.cerebray.svc.cluster.local:6379',
+            'redis-password':         redis_pass,
+            'anthropic-api-key':      os.environ['ANTHROPIC_API_KEY'],
+            'keycloak-issuer-url':    os.environ.get('KEYCLOAK_ISSUER_URL', ''),
             'keycloak-client-secret': os.environ.get('KEYCLOAK_CLIENT_SECRET', ''),
         }
         print(json.dumps(data))
@@ -339,12 +344,17 @@ tasks:
     desc: Create cerebray-secrets Kubernetes secret directly, bypassing Vault (idempotent)
     cmds:
       - |
+        DB_PASS="${K8S_DATABASE_PASSWORD:-cerebray}"
+        REDIS_PASS="${K8S_REDIS_PASSWORD:-cerebray}"
         kubectl create secret generic cerebray-secrets \
           --namespace cerebray \
           --from-literal=session-secret="${SESSION_SECRET}" \
-          --from-literal=database-url="${DATABASE_URL}" \
-          --from-literal=redis-url="${REDIS_URL}" \
+          --from-literal=database-url="postgres://cerebray:${DB_PASS}@postgresql.cerebray.svc.cluster.local:5432/cerebray?sslmode=disable" \
+          --from-literal=database-password="${DB_PASS}" \
+          --from-literal=redis-url="redis://:${REDIS_PASS}@redis-master.cerebray.svc.cluster.local:6379" \
+          --from-literal=redis-password="${REDIS_PASS}" \
           --from-literal=anthropic-api-key="${ANTHROPIC_API_KEY}" \
+          --from-literal=keycloak-issuer-url="${KEYCLOAK_ISSUER_URL:-}" \
           --from-literal=keycloak-client-secret="${KEYCLOAK_CLIENT_SECRET:-}" \
           --save-config --dry-run=client -o yaml | kubectl apply -f -
 
