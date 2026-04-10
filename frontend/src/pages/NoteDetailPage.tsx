@@ -99,10 +99,8 @@ export function NoteDetailPage() {
 
     send(convoId, `Expand this thought into a full Zettel: ${thought}`, (fullText) => {
       const suggestions = parseZettelSuggestions(fullText)
-      console.log('[cerebray] parsed suggestions:', suggestions.length)
       if (suggestions.length > 0) {
         const s = suggestions[0]
-        console.log('[cerebray] applying suggestion:', s.title, '| body length:', s.body.length)
         // Must include status/tlp/additional - backend does a full field replace
         getNote(noteId).then((current) => {
           const updates: Partial<Note> = {
@@ -121,15 +119,11 @@ export function NoteDetailPage() {
             tlp: current.tlp,
             additional: current.additional,
           }
-          console.log('[cerebray] calling updateNote with status:', updates.status, 'tlp:', updates.tlp)
           return updateNote(noteId, updates)
         }).then((updated) => {
-          console.log('[cerebray] note updated, title:', updated.title)
           setNote(updated)
           setDraft(updated)
-        }).catch((err) => {
-          console.error('[cerebray] auto-apply failed:', err)
-        })
+        }).catch(() => {})
       }
       setChatMessages(prev => [...prev, {
         id: Date.now(),
