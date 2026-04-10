@@ -142,9 +142,14 @@ function ForceGraph({
       label.attr('x', (d) => d.x || 0).attr('y', (d) => d.y || 0)
     })
 
-    // Zoom and pan
+    // Zoom and pan (filter out events on nodes so dragging a node doesn't pan)
     const zoomBehavior: ZoomBehavior<SVGSVGElement, unknown> = d3Zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.3, 4])
+      .filter((event) => {
+        // Allow scroll-wheel zoom everywhere, but only allow drag-pan from background
+        if (event.type === 'wheel') return true
+        return !(event.target as Element)?.closest?.('circle')
+      })
       .on('zoom', (event) => {
         g.attr('transform', event.transform)
       })
