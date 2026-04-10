@@ -4,6 +4,20 @@ Issues are listed newest first. Each entry captures what went wrong, how it was 
 
 ---
 
+## 2026-04-10: Keycloak login fails with "auth exchange failed"
+
+**Issue:** After deploying to k8s, clicking the Keycloak login button redirected to Keycloak correctly, but the callback returned "auth exchange failed".
+
+**Investigation:** Backend logs showed: `Post "https://keycloak.homelab/realms/homelab/protocol/openid-connect/token": tls: failed to verify certificate: x509: certificate signed by unknown authority`. The backend container (Alpine) didn't trust the homelab CA that issued the Keycloak TLS certificate.
+
+**Root cause:** The backend's Alpine container only ships with public CA certificates. The homelab uses a self-signed CA (via mkcert) for internal TLS. When Go's HTTP client tried to POST to the Keycloak token endpoint, TLS verification failed.
+
+**Fix:** Added `SSL_CERT_FILE` env var pointing to `/etc/ssl/homelab/ca-certificates.crt` and mounted the `homelab-ca-bundle` ConfigMap (already present in the cluster) as a volume in the backend deployment. Go's `crypto/tls` reads `SSL_CERT_FILE` automatically.
+
+**Lessons learned:** Any backend container that calls other homelab services over HTTPS needs the homelab CA mounted. The archdraft project already had this pattern - check existing apps when deploying new services.
+
+---
+
 ## 2026-04-10: PostgreSQL HelmRelease fails with ErrImagePull on tag "16"
 
 **Issue:** After deploying cerebray to k8s, the PostgreSQL StatefulSet pod failed with `ErrImagePull`. The error was `docker.io/bitnami/postgresql:16: not found`.
