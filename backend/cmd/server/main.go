@@ -20,6 +20,7 @@ import (
 	"github.com/aray/cerebray/backend/internal/auth"
 	"github.com/aray/cerebray/backend/internal/config"
 	"github.com/aray/cerebray/backend/internal/handlers"
+	mw "github.com/aray/cerebray/backend/internal/middleware"
 )
 
 func main() {
@@ -103,6 +104,9 @@ func main() {
 		return user.ID, nil
 	}
 
+	// Bridge auth package to middleware's context key
+	auth.GetUserIDFromContext = mw.GetUserID
+
 	// Auth handler
 	var oauthCfg *oauth2.Config
 	if cfg.IsKeycloakEnabled() {
@@ -119,6 +123,9 @@ func main() {
 		IssuerURL:    cfg.KeycloakIssuerURL,
 		Sessions:     sessions,
 		UpsertUser:   userUpsertFn,
+		GetUser: func(ctx context.Context, id int64) (interface{}, error) {
+			return queries.GetUserByID(ctx, id)
+		},
 		BaseURL:      cfg.BaseURL,
 		SecureCookie: cfg.IsProduction(),
 		LocalMode:    !cfg.IsKeycloakEnabled(),

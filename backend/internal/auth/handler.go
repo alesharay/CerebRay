@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
@@ -11,12 +12,16 @@ import (
 // UserUpsertFunc creates or updates a user from OIDC claims and returns the user ID.
 type UserUpsertFunc func(ctx context.Context, oidcSubject, email, name, avatar string) (int64, error)
 
+// UserGetFunc fetches a user by ID. Returns the user as an interface to avoid circular deps with sqlc.
+type UserGetFunc func(ctx context.Context, id int64) (interface{}, error)
+
 // Handler serves auth endpoints.
 type Handler struct {
 	oauthCfg     *oauth2.Config
 	issuerURL    string
 	sessions     *SessionStore
 	upsertUser   UserUpsertFunc
+	getUser      UserGetFunc
 	baseURL      string
 	secureCookie bool
 	localMode    bool
@@ -29,6 +34,7 @@ type HandlerConfig struct {
 	IssuerURL    string
 	Sessions     *SessionStore
 	UpsertUser   UserUpsertFunc
+	GetUser      UserGetFunc
 	BaseURL      string
 	SecureCookie bool
 	LocalMode    bool
@@ -42,6 +48,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		issuerURL:    cfg.IssuerURL,
 		sessions:     cfg.Sessions,
 		upsertUser:   cfg.UpsertUser,
+		getUser:      cfg.GetUser,
 		baseURL:      cfg.BaseURL,
 		secureCookie: cfg.SecureCookie,
 		localMode:    cfg.LocalMode,
@@ -141,11 +148,25 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleMe returns the current user info.
+// Expects GetUserIDFromContext to be set before use.
+var GetUserIDFromContext func(ctx context.Context) int64
+
 func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
-	// User ID is injected by RequireAuth middleware
-	// This handler will be fleshed out after middleware is in place
+	userID := GetUserIDFromContext(r.Context())
+	if userID == 0 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := h.getUser(r.Context(), userID)
+	if err != nil {
+		log.Error().Err(err).Msg("fetching user for /me")
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(user)
 }
 
 func (h *Handler) handleLocalLogin(w http.ResponseWriter, r *http.Request) {
