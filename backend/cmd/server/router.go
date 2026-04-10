@@ -5,9 +5,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/aray/cerebray/backend/internal/auth"
 	"github.com/aray/cerebray/backend/internal/handlers"
+	"github.com/aray/cerebray/backend/internal/metrics"
 	mw "github.com/aray/cerebray/backend/internal/middleware"
 )
 
@@ -21,6 +23,7 @@ type RouterDeps struct {
 	Glossary      *handlers.GlossaryHandlers
 	Conversations *handlers.ConversationHandlers
 	Chat          *handlers.ChatHandlers
+	Metrics       *metrics.Metrics
 	AllowOrigin   string
 }
 
@@ -30,12 +33,14 @@ func buildRouter(deps RouterDeps) http.Handler {
 	// Global middleware
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
+	r.Use(metrics.HTTPMiddleware(deps.Metrics))
 	r.Use(mw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(mw.CORS(deps.AllowOrigin))
 
 	// Public routes
 	r.Get("/health", handlers.HandleHealth)
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Auth routes
 	r.Route("/auth", func(r chi.Router) {

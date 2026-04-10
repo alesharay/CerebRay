@@ -28,6 +28,7 @@ func Logger(next http.Handler) http.Handler {
 		}
 
 		event.
+			Str("request_id", middleware.GetReqID(r.Context())).
 			Str("method", r.Method).
 			Str("path", r.URL.Path).
 			Int("status", status).

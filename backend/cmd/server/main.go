@@ -20,6 +20,7 @@ import (
 	"github.com/aray/cerebray/backend/internal/auth"
 	"github.com/aray/cerebray/backend/internal/config"
 	"github.com/aray/cerebray/backend/internal/handlers"
+	"github.com/aray/cerebray/backend/internal/metrics"
 	mw "github.com/aray/cerebray/backend/internal/middleware"
 )
 
@@ -142,6 +143,9 @@ func main() {
 		log.Warn().Msg("AI provider disabled (no API key or AI_ENABLED=false)")
 	}
 
+	// Metrics
+	appMetrics := metrics.New()
+
 	// Handlers
 	noteHandlers := handlers.NewNoteHandlers(queries)
 	tagHandlers := handlers.NewTagHandlers(queries)
@@ -149,7 +153,7 @@ func main() {
 	dashHandlers := handlers.NewDashboardHandlers(queries)
 	glossaryHandlers := handlers.NewGlossaryHandlers(queries)
 	convoHandlers := handlers.NewConversationHandlers(queries)
-	chatHandlers := handlers.NewChatHandlers(queries, aiProvider)
+	chatHandlers := handlers.NewChatHandlers(queries, aiProvider, appMetrics)
 
 	// Router
 	router := buildRouter(RouterDeps{
@@ -162,6 +166,7 @@ func main() {
 		Glossary:      glossaryHandlers,
 		Conversations: convoHandlers,
 		Chat:          chatHandlers,
+		Metrics:       appMetrics,
 		AllowOrigin:   cfg.BaseURL,
 	})
 

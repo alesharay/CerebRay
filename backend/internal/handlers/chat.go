@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	"github.com/rs/zerolog/log"
+	"time"
 
 	"github.com/aray/cerebray/backend/db/sqlc"
 	"github.com/aray/cerebray/backend/internal/ai"
+	"github.com/aray/cerebray/backend/internal/metrics"
 	"github.com/aray/cerebray/backend/internal/middleware"
 )
 
@@ -16,11 +16,12 @@ import (
 type ChatHandlers struct {
 	queries  *sqlc.Queries
 	provider ai.Provider
+	metrics  *metrics.Metrics
 }
 
 // NewChatHandlers creates a new ChatHandlers instance.
-func NewChatHandlers(q *sqlc.Queries, provider ai.Provider) *ChatHandlers {
-	return &ChatHandlers{queries: q, provider: provider}
+func NewChatHandlers(q *sqlc.Queries, provider ai.Provider, m *metrics.Metrics) *ChatHandlers {
+	return &ChatHandlers{queries: q, provider: provider, metrics: m}
 }
 
 type sendMessageRequest struct {
@@ -139,8 +140,10 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var fullResponse string
+	rlog := middleware.RequestLogger(r.Context())
 
 	// Stream the AI response, sending each chunk as an SSE event
+	aiStart := time.Now()
 	result, err := h.provider.StreamChat(r.Context(), chatMessages, systemPrompt, func(chunk string) error {
 		fullResponse += chunk
 		data, _ := json.Marshal(map[string]string{"delta": chunk})
@@ -148,14 +151,22 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return nil
 	})
+	aiDuration := time.Since(aiStart).Seconds()
 
 	if err != nil {
-		log.Error().Err(err).Msg("AI stream error")
+		rlog.Error().Err(err).Msg("AI stream error")
+		h.metrics.AIRequestsTotal.WithLabelValues("unknown", "error").Inc()
 		errData, _ := json.Marshal(map[string]string{"error": "AI stream failed"})
 		fmt.Fprintf(w, "data: %s\n\n", errData)
 		flusher.Flush()
 		return
 	}
+
+	// Record AI metrics
+	h.metrics.AIRequestsTotal.WithLabelValues(result.Model, "success").Inc()
+	h.metrics.AITokensTotal.WithLabelValues("input", result.Model).Add(float64(result.InputTokens))
+	h.metrics.AITokensTotal.WithLabelValues("output", result.Model).Add(float64(result.OutputTokens))
+	h.metrics.AIRequestDuration.WithLabelValues(result.Model).Observe(aiDuration)
 
 	// Store assistant message with token usage
 	_, err = h.queries.CreateMessage(r.Context(), sqlc.CreateMessageParams{
@@ -167,7 +178,7 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 		Model:          result.Model,
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("failed to store assistant message")
+		rlog.Error().Err(err).Msg("failed to store assistant message")
 	}
 
 	// Log AI usage for budget tracking
@@ -181,7 +192,7 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 		Model:          result.Model,
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("failed to log AI usage")
+		rlog.Error().Err(err).Msg("failed to log AI usage")
 	}
 
 	// Send done event so the client knows the stream is complete

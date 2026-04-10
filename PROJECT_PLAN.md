@@ -178,10 +178,11 @@ Design principles for the dashboard and all pages:
 
 ### 12. Observability
 
-- [ ] Prometheus /metrics endpoint (HTTP request counters, histograms)
-- [ ] AI usage metrics (tokens consumed, requests, latency)
-- [ ] PostHog analytics (page views, note creation, chat usage)
-- [ ] Structured JSON logging in production (zerolog)
+- [x] Prometheus /metrics endpoint (HTTP request counters, histograms)
+- [x] AI usage metrics (tokens consumed, requests, latency)
+- [ ] PostHog analytics - skipped for now
+- [x] Structured JSON logging in production (zerolog, request_id correlation)
+- [x] Prometheus scrape annotations on k8s pod template
 
 ### 13. Deployment
 
@@ -296,6 +297,7 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 
 ## Notes and Decisions Log
 
+- **2026-04-10**: Phase 12 (Observability) complete. Added Prometheus metrics via `internal/metrics/` package: HTTP request counter/histogram/gauge and AI token/request/duration metrics. Chi middleware records HTTP metrics using route patterns for low cardinality. `/metrics` endpoint exposed unauthenticated for Prometheus scraping. Enhanced structured logging with `request_id` correlation in all request logs, plus `RequestLogger` context helper for handler-level logs with user_id. K8s pod annotations added for Prometheus auto-discovery. PostHog skipped.
 - **2026-04-10**: Phase 10e/10f complete. Interactive knowledge graph with zoom/pan (d3-zoom), drag (d3-drag), hover highlighting, HTML tooltips, color legend, search/filter, and SPA navigation. Cluster visualization deferred until 100+ notes. Echoes page simplified to title + age + actions. Chat follow-up suggestions with Save to Inbox cards. Refresh from chat action on note detail page. Dashboard trend sparklines via new GetLifecycleTrend backend query (weekly counts over 90 days).
 - **2026-04-10**: Workflow refactor complete (Phase 10). Inbox is now quick-capture, promote triggers AI expansion, note detail page has embedded chat. Chat page removed from nav. Added Phase 10e (interactive knowledge graph) and 10f (UX fixes) based on user testing. Broken d3 zoom placeholder fixed. SSE buffer flush bug found and fixed (done event not processed). Zettel parser upgraded for multi-line field content. Deployed to homelab k8s with all infrastructure operational.
 - **2026-04-09**: Added Phase 10 (Analytics Dashboard). New `note_events` table to track status transitions automatically. Dashboard redesign with inbox overview, lifecycle metrics, Zettelkasten strength score, conversation conversion rate, AI budget, and stale note detection. All lifecycle data is system-tracked, no manual entry. UI identity established: Quicksand font, warm palette, notebook aesthetic - explicitly not a Grafana-style monitoring UI.
