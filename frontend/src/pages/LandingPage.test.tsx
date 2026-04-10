@@ -10,6 +10,6 @@ describe('LandingPage', () => {
         <LandingPage />
       </MemoryRouter>
     )
-    expect(screen.getByText('Cerebray')).toBeInTheDocument()
+    expect(screen.getByText('Cereb-Ray')).toBeInTheDocument()
   })
 })

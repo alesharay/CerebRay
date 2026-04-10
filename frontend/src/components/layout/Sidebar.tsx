@@ -26,7 +26,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-zinc-800 bg-zinc-950 px-3 py-4">
       <Link to="/dashboard" className="mb-6 px-3 text-lg font-bold text-white">
-        Cerebray
+        Cereb-Ray
       </Link>
 
       <nav className="flex flex-1 flex-col gap-1">

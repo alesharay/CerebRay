@@ -29,7 +29,7 @@ export function LandingPage() {
     <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
       {/* Hero */}
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-24">
-        <h1 className="mb-3 text-5xl font-bold tracking-tight">Cerebray</h1>
+        <h1 className="mb-3 text-5xl font-bold tracking-tight">Cereb-Ray</h1>
         <p className="mb-8 max-w-md text-center text-lg text-zinc-400">
           A personal Zettelkasten powered by AI conversations. Learn, capture, connect.
         </p>
