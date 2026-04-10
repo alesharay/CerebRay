@@ -1,5 +1,13 @@
 import type { ZettelSuggestion, ConnectionSuggestion } from '../types'
 
+// Strip suggestion blocks from text for clean chat display
+export function stripSuggestionBlocks(text: string): string {
+  return text
+    .replace(/---ZETTEL_SUGGESTION---[\s\S]*?---END_ZETTEL---/g, '')
+    .replace(/---CONNECTION_SUGGESTION---[\s\S]*?---END_CONNECTION---/g, '')
+    .trim()
+}
+
 export function parseZettelSuggestions(text: string): ZettelSuggestion[] {
   const suggestions: ZettelSuggestion[] = []
   const regex = /---ZETTEL_SUGGESTION---([\s\S]*?)---END_ZETTEL---/g

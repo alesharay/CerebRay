@@ -5,7 +5,7 @@ import { listConnectionsForNote, createConnection } from '../api/connections'
 import { addTagToNote } from '../api/tags'
 import { getConversation } from '../api/chat'
 import { useChat } from '../hooks/useSSE'
-import { parseZettelSuggestions } from '../lib/zettelParser'
+import { parseZettelSuggestions, stripSuggestionBlocks } from '../lib/zettelParser'
 import type { Note, Connection, NoteType, NoteTLP, Message } from '../types'
 import { cn } from '../lib/utils'
 import {
@@ -523,7 +523,9 @@ export function NoteDetailPage() {
                 <div className="mb-1 text-xs font-medium text-zinc-500">
                   {msg.role === 'user' ? 'You' : 'AI'}
                 </div>
-                <div className="whitespace-pre-wrap">{msg.content}</div>
+                <div className="whitespace-pre-wrap">
+                  {msg.role === 'assistant' ? stripSuggestionBlocks(msg.content) : msg.content}
+                </div>
               </div>
             ))}
 
@@ -531,7 +533,7 @@ export function NoteDetailPage() {
             {streaming && (
               <div className="mr-8 rounded-lg border border-zinc-800/60 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-300">
                 <div className="mb-1 text-xs font-medium text-zinc-500">AI</div>
-                <div className="whitespace-pre-wrap">{streamedText || 'Thinking...'}</div>
+                <div className="whitespace-pre-wrap">{stripSuggestionBlocks(streamedText) || 'Thinking...'}</div>
               </div>
             )}
 
