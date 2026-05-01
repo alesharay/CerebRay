@@ -85,6 +85,13 @@ func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 
 // HandleCallback processes the OIDC callback.
 func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Error().Interface("panic", rec).Msg("panic in HandleCallback, redirecting home")
+			http.Redirect(w, r, h.baseURL+"/", http.StatusSeeOther)
+		}
+	}()
+
 	if h.localMode {
 		http.Redirect(w, r, h.baseURL+"/dashboard", http.StatusTemporaryRedirect)
 		return
@@ -93,15 +100,18 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	code := r.URL.Query().Get("code")
 
+	// A stale callback URL (back button, session restore, double click) replays
+	// a state token that has already been consumed. Redirect home instead of
+	// showing a 400 dead-end so the SPA can take over.
 	if state == "" || code == "" {
-		http.Error(w, "missing state or code", http.StatusBadRequest)
+		http.Redirect(w, r, h.baseURL+"/", http.StatusSeeOther)
 		return
 	}
 
 	verifier, err := h.sessions.ValidateAndConsumeStateToken(r.Context(), state)
 	if err != nil {
-		log.Error().Err(err).Msg("invalid state token")
-		http.Error(w, "invalid state", http.StatusBadRequest)
+		log.Warn().Err(err).Msg("invalid state token on callback, redirecting home")
+		http.Redirect(w, r, h.baseURL+"/", http.StatusSeeOther)
 		return
 	}
 
