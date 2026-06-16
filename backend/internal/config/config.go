@@ -54,7 +54,7 @@ func Load() (*Config, error) {
 		LocalUserName:        getStr("LOCAL_USER_NAME", "Local Admin"),
 		AIEnabled:            getBool("AI_ENABLED", true),
 		AnthropicAPIKey:      getStr("ANTHROPIC_API_KEY", ""),
-		AIModel:              getStr("AI_MODEL", "claude-sonnet-4-5-20250514"),
+		AIModel:              getStr("AI_MODEL", "claude-sonnet-4-6"),
 		AIMonthlyTokenBudget: getInt("AI_MONTHLY_TOKEN_BUDGET", 2000000),
 	}
 

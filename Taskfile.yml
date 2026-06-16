@@ -588,6 +588,12 @@ tasks:
                         secretKeyRef:
                           name: cerebray-secrets
                           key: keycloak-client-secret
+                    - name: AI_ENABLED
+                      value: "true"
+                    - name: AI_MODEL
+                      value: "claude-sonnet-4-6"
+                    - name: AI_MONTHLY_TOKEN_BUDGET
+                      value: "2000000"
                   resources:
                     requests:
                       memory: 128Mi
