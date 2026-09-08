@@ -4,6 +4,34 @@ Issues are listed newest first. Each entry captures what went wrong, how it was 
 
 ---
 
+## 2026-09-07: Promoting a note dies partway with "Error in input stream"
+
+**Issue:** Promoting a note from the Inbox streamed AI text for a while, then stopped and showed "Error in input stream" in the UI. Short chat messages were unaffected.
+
+**Investigation:** The error string is nowhere in the codebase. It turned out to be the browser's own message for a `fetch` response body that fails mid-read (Firefox's wording; Chrome says `network error`). It reaches the UI through `frontend/src/api/chat.ts` - the `.catch` around the reader loop passes `err.message` straight to `onError`, which `useSSE.ts` puts into `chatError` for `NoteDetailPage` to render. So the UI was faithfully showing a raw network error, not an application one.
+
+That pointed at the connection being torn down rather than at any AI logic. `WriteTimeout: 60 * time.Second` in `cmd/server/main.go` was the culprit, and the comment beside it ("longer for SSE streaming") showed the wrong assumption.
+
+**Root cause:** Go's `http.Server.WriteTimeout` is an absolute deadline measured from when the request headers finish being read. It is not idle-based and does not reset per write, so any handler still streaming at 60 seconds gets its write killed and the connection closed. The promote path is the only flow that regularly crosses that line: `BuildExpandPrompt` asks for all 11 Zettel fields "thoroughly" with a body of "several paragraphs" against `MaxTokens: 4096`, which streams for roughly 50-90 seconds. Because it straddles the limit, the failure was intermittent. The nginx `proxy_read_timeout` (300s) and the ingress annotation were both fine - Go was the binding constraint.
+
+A second, independent gap surfaced while reading the provider: the SSE event switch in `internal/ai/anthropic.go` had no `case "error"`. Anthropic can emit an error event partway through a stream (overloaded, rate limited). The loop silently skipped it, hit EOF, and `StreamChat` returned a **nil** error - so the handler saved the truncated text as a complete assistant message.
+
+**Fix:**
+- `internal/handlers/chat.go` - clear the write deadline for the SSE request only, via `http.NewResponseController(w).SetWriteDeadline(time.Time{})`. This keeps the 60s protection on every other route. Also bounded the provider call with a 4 minute `context.WithTimeout` so a hung upstream cannot pin the handler forever, and included the real error text in the SSE error payload instead of a bare "AI stream failed".
+- `internal/ai/anthropic.go` - added `case "error"` that returns the API's error type and message, so mid-stream failures surface instead of being persisted as finished notes.
+- `cmd/server/main.go` - corrected the misleading comment on `WriteTimeout`.
+- `internal/handlers/stream_deadline_test.go` - regression test that builds the real middleware chain, sets a short `WriteTimeout`, and asserts a longer stream still completes. Includes a control case proving the stream is cut without the fix (108 bytes vs 183).
+
+**Lessons learned:**
+- `WriteTimeout` is an absolute deadline, not an idle timeout. Any long-lived response (SSE, downloads, websocket upgrades) needs a per-request `http.ResponseController` escape hatch rather than a globally inflated timeout.
+- `SetWriteDeadline` only reaches the connection if every `ResponseWriter` wrapper in the chain implements `Unwrap() http.ResponseWriter`. Both wrappers here come from `chi/middleware`, which does. A hand-rolled wrapper would silently break this and the fix would no-op - hence the test.
+- When an error string does not exist anywhere in the repo, it is coming from the browser or a proxy. Grep first, then work outward through the layers.
+- Silently ignoring unknown event types in a stream parser turns upstream failures into corrupt-but-successful writes. Handle the error event explicitly.
+
+**Still open:** if the expand stream does fail, the user message is already stored, so a retry makes `len(dbMessages) == 2` and `chat.go` falls back to the generic system prompt instead of the expand prompt. Retrying a failed promote gives a worse note.
+
+---
+
 ## 2026-04-10: Keycloak login fails with "auth exchange failed"
 
 **Issue:** After deploying to k8s, clicking the Keycloak login button redirected to Keycloak correctly, but the callback returned "auth exchange failed".

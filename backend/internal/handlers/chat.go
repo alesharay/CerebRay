@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -139,12 +140,24 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var fullResponse string
+	// The server's WriteTimeout is an absolute deadline from the start of the
+	// request, so a long generation (an expanded Zettel can run past a minute)
+	// would have the connection torn down mid-stream. Drop the deadline for
+	// this request only; the streamCtx below bounds it instead.
 	rlog := middleware.RequestLogger(r.Context())
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		rlog.Warn().Err(err).Msg("could not clear SSE write deadline")
+	}
+
+	// Bound the upstream call so a hung provider cannot pin the handler forever.
+	streamCtx, cancelStream := context.WithTimeout(r.Context(), 4*time.Minute)
+	defer cancelStream()
+
+	var fullResponse string
 
 	// Stream the AI response, sending each chunk as an SSE event
 	aiStart := time.Now()
-	result, err := h.provider.StreamChat(r.Context(), chatMessages, systemPrompt, func(chunk string) error {
+	result, err := h.provider.StreamChat(streamCtx, chatMessages, systemPrompt, func(chunk string) error {
 		fullResponse += chunk
 		data, _ := json.Marshal(map[string]string{"delta": chunk})
 		fmt.Fprintf(w, "data: %s\n\n", data)
@@ -156,7 +169,7 @@ func (h *ChatHandlers) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		rlog.Error().Err(err).Msg("AI stream error")
 		h.metrics.AIRequestsTotal.WithLabelValues("unknown", "error").Inc()
-		errData, _ := json.Marshal(map[string]string{"error": "AI stream failed"})
+		errData, _ := json.Marshal(map[string]string{"error": "AI stream failed: " + err.Error()})
 		fmt.Fprintf(w, "data: %s\n\n", errData)
 		flusher.Flush()
 		return

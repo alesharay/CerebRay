@@ -135,6 +135,18 @@ func (p *AnthropicProvider) StreamChat(ctx context.Context, messages []ChatMessa
 				}
 			}
 
+		case "error":
+			// Anthropic can emit an error event partway through a stream
+			// (overloaded, rate limited, upstream failure). Without this the
+			// partial response would be treated as a complete one.
+			apiErr, _ := event["error"].(map[string]any)
+			errType, _ := apiErr["type"].(string)
+			errMsg, _ := apiErr["message"].(string)
+			if errType == "" && errMsg == "" {
+				return nil, fmt.Errorf("anthropic stream error: %s", eventJSON)
+			}
+			return nil, fmt.Errorf("anthropic stream error (%s): %s", errType, errMsg)
+
 		case "message_delta":
 			// Extract token usage from the final message_delta event
 			usage, _ := event["usage"].(map[string]any)

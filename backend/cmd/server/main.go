@@ -175,7 +175,10 @@ func main() {
 		Addr:         ":" + cfg.Port,
 		Handler:      router,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second, // longer for SSE streaming
+		// WriteTimeout is an absolute deadline from the start of the request, not
+		// an idle timeout, so it would cut off long SSE streams. The chat handler
+		// clears its own write deadline via http.ResponseController.
+		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
