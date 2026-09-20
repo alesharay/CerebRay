@@ -452,10 +452,12 @@ tasks:
           - backend.yaml
           - frontend.yaml
           - ingress.yaml
-          # backup.yaml is hand-maintained in the gitops repo, not templated
-          # here. It must stay listed or a regen would silently unregister the
-          # nightly database backup.
+          # backup.yaml and servicemonitor.yaml are hand-maintained in the
+          # gitops repo, not templated here. They must stay listed or a regen
+          # would silently unregister the nightly database backup and stop
+          # Prometheus collecting the backend's metrics.
           - backup.yaml
+          - servicemonitor.yaml
         EOF
       - |
         cat > {{.D}}/namespace.yaml << 'EOF'
@@ -684,6 +686,10 @@ tasks:
         metadata:
           name: backend
           namespace: cerebray
+          # The ServiceMonitor selects on the Service's own labels, not on
+          # spec.selector. Dropping this label stops Prometheus scraping.
+          labels:
+            app: backend
         spec:
           selector:
             app: backend
