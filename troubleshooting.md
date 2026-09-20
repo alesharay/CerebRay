@@ -68,11 +68,11 @@ failed to load plugin ... failed to create CRI service:
 failed to create cni conf monitor for default: failed to create fsnotify watcher: too many open files
 ```
 
-`fs.inotify.max_user_instances` in the Docker Desktop VM is 512, and that limit is per-uid across the *whole* VM, shared by all three k3d nodes and every pod on them. Per-container `ulimit -n` was identical on the healthy agent-0, which is what ruled out a node-specific misconfiguration.
+`fs.inotify.max_user_instances` in the Colima VM is 512, and that limit is per-uid across the *whole* VM, shared by all three k3d nodes and every pod on them. Per-container `ulimit -n` was identical on the healthy agent-0, which is what ruled out a node-specific misconfiguration.
 
 One red herring worth recording: the Node object was advertising `InternalIP 172.18.0.2`, which is agent-0's address, while agent-2's actual Docker IP was `172.18.0.3`. That looked like an IP conflict but was just the last-known-good status cached from before the restart. It self-corrected the moment the kubelet posted a real update.
 
-**Root cause:** A Docker Desktop restart brought all three k3d node containers back at once. On agent-2, containerd's CRI plugin failed to load because the shared inotify instance limit was exhausted, so the CRI runtime service never registered. The kubelet cannot start until containerd answers, so it never posted node status, the node went `NotReady` and picked up the `unreachable` taint, and the node-pinned `local-path` PV made `postgresql-0` unschedulable anywhere else. No Postgres endpoint meant the backend's startup ping failed and the process called `log.Fatal`.
+**Root cause:** A restart of the Colima VM brought all three k3d node containers back at once. On agent-2, containerd's CRI plugin failed to load because the shared inotify instance limit was exhausted, so the CRI runtime service never registered. The kubelet cannot start until containerd answers, so it never posted node status, the node went `NotReady` and picked up the `unreachable` taint, and the node-pinned `local-path` PV made `postgresql-0` unschedulable anywhere else. No Postgres endpoint meant the backend's startup ping failed and the process called `log.Fatal`.
 
 **Fix:** Backed up the Postgres data directory first, since no backup of it existed anywhere:
 

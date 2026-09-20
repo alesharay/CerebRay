@@ -304,7 +304,10 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 - [ ] **Markdown rendering.** Note fields store Markdown but the UI renders raw text.
 - [ ] **ServiceMonitor for cerebray** so the `/metrics` endpoint is actually scraped.
 - [ ] **Migration Job in the deploy path.** Migrations are applied by hand today.
-- [ ] Raise `fs.inotify.max_user_instances` during cluster bring-up (Docker Desktop resets it).
+- [ ] Raise `fs.inotify.max_user_instances` persistently. Add a `provision:` block to
+      `~/.colima/default/colima.yaml` so it survives `colima stop`/`start`, and wire the
+      existing (currently undeployed) `sysctl-fix` task in the homelab Taskfile into
+      `create-cluster` as a second line of defence.
 
 ## Notes and Decisions Log
 
