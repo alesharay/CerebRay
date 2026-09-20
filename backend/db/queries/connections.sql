@@ -18,9 +18,14 @@ WHERE EXISTS (SELECT 1 FROM notes src WHERE src.id = sqlc.arg(source_id) AND src
 RETURNING *;
 
 -- name: DeleteConnection :exec
+-- Checks both endpoints, matching ListConnectionsForNote. Source-only would be
+-- enough for rows created after CreateConnection was scoped, but not for any
+-- cross-owner rows left behind from before that fix.
 DELETE FROM connections c
-USING notes n
-WHERE c.id = $1 AND n.id = c.source_id AND n.user_id = $2;
+USING notes src, notes tgt
+WHERE c.id = $1
+  AND src.id = c.source_id AND src.user_id = $2
+  AND tgt.id = c.target_id AND tgt.user_id = $2;
 
 -- name: GetGraphData :many
 SELECT c.source_id, c.target_id, c.label,
@@ -29,4 +34,4 @@ SELECT c.source_id, c.target_id, c.label,
 FROM connections c
 JOIN notes n1 ON n1.id = c.source_id
 JOIN notes n2 ON n2.id = c.target_id
-WHERE n1.user_id = $1;
+WHERE n1.user_id = $1 AND n2.user_id = $1;

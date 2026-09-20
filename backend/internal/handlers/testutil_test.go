@@ -19,7 +19,7 @@ import (
 // fakeQuerier implements sqlc.Querier with injectable function fields.
 // Any method without a function set returns zero values and nil error.
 type fakeQuerier struct {
-	AddNoteTagFn                   func(ctx context.Context, arg sqlc.AddNoteTagParams) error
+	AddNoteTagFn                   func(ctx context.Context, arg sqlc.AddNoteTagParams) (int64, error)
 	CountNotesByStatusFn           func(ctx context.Context, userID int64) ([]sqlc.CountNotesByStatusRow, error)
 	CreateConnectionFn             func(ctx context.Context, arg sqlc.CreateConnectionParams) (sqlc.Connection, error)
 	CreateConversationFn           func(ctx context.Context, arg sqlc.CreateConversationParams) (sqlc.Conversation, error)
@@ -43,7 +43,7 @@ type fakeQuerier struct {
 	GetLifecycleMetricsFn          func(ctx context.Context, arg sqlc.GetLifecycleMetricsParams) ([]sqlc.GetLifecycleMetricsRow, error)
 	GetLifecycleTrendFn            func(ctx context.Context, arg sqlc.GetLifecycleTrendParams) ([]sqlc.GetLifecycleTrendRow, error)
 	GetMonthlyUsageFn              func(ctx context.Context, userID *int64) (sqlc.GetMonthlyUsageRow, error)
-	GetNoteByIDFn                  func(ctx context.Context, arg sqlc.GetNoteByIDParams) (sqlc.Note, error)
+	GetNoteByIDFn                  func(ctx context.Context, arg sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error)
 	GetNoteBySourceChatFn          func(ctx context.Context, arg sqlc.GetNoteBySourceChatParams) (sqlc.Note, error)
 	GetNoteCurrentStatusFn         func(ctx context.Context, arg sqlc.GetNoteCurrentStatusParams) (sqlc.NoteStatus, error)
 	GetNoteTypeDistributionFn      func(ctx context.Context, userID int64) ([]sqlc.GetNoteTypeDistributionRow, error)
@@ -57,7 +57,7 @@ type fakeQuerier struct {
 	ListConversationsFn            func(ctx context.Context, arg sqlc.ListConversationsParams) ([]sqlc.Conversation, error)
 	ListGlossaryTermsFn            func(ctx context.Context, userID int64) ([]sqlc.ListGlossaryTermsRow, error)
 	ListMessagesFn                 func(ctx context.Context, conversationID int64) ([]sqlc.Message, error)
-	ListNotesByStatusFn            func(ctx context.Context, arg sqlc.ListNotesByStatusParams) ([]sqlc.Note, error)
+	ListNotesByStatusFn            func(ctx context.Context, arg sqlc.ListNotesByStatusParams) ([]sqlc.ListNotesByStatusRow, error)
 	ListNotesByTagFn               func(ctx context.Context, arg sqlc.ListNotesByTagParams) ([]sqlc.Note, error)
 	ListNotesByUserFn              func(ctx context.Context, arg sqlc.ListNotesByUserParams) ([]sqlc.ListNotesByUserRow, error)
 	ListTagsByUserFn               func(ctx context.Context, userID int64) ([]sqlc.ListTagsByUserRow, error)
@@ -74,11 +74,11 @@ type fakeQuerier struct {
 	UpdateUserPreferencesFn        func(ctx context.Context, arg sqlc.UpdateUserPreferencesParams) (sqlc.User, error)
 }
 
-func (f *fakeQuerier) AddNoteTag(ctx context.Context, arg sqlc.AddNoteTagParams) error {
+func (f *fakeQuerier) AddNoteTag(ctx context.Context, arg sqlc.AddNoteTagParams) (int64, error) {
 	if f.AddNoteTagFn != nil {
 		return f.AddNoteTagFn(ctx, arg)
 	}
-	return nil
+	return 0, nil
 }
 
 func (f *fakeQuerier) CountNotesByStatus(ctx context.Context, userID int64) ([]sqlc.CountNotesByStatusRow, error) {
@@ -242,11 +242,11 @@ func (f *fakeQuerier) GetMonthlyUsage(ctx context.Context, userID *int64) (sqlc.
 	return sqlc.GetMonthlyUsageRow{}, nil
 }
 
-func (f *fakeQuerier) GetNoteByID(ctx context.Context, arg sqlc.GetNoteByIDParams) (sqlc.Note, error) {
+func (f *fakeQuerier) GetNoteByID(ctx context.Context, arg sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
 	if f.GetNoteByIDFn != nil {
 		return f.GetNoteByIDFn(ctx, arg)
 	}
-	return sqlc.Note{}, nil
+	return sqlc.GetNoteByIDRow{}, nil
 }
 
 func (f *fakeQuerier) GetNoteBySourceChat(ctx context.Context, arg sqlc.GetNoteBySourceChatParams) (sqlc.Note, error) {
@@ -340,7 +340,7 @@ func (f *fakeQuerier) ListMessages(ctx context.Context, conversationID int64) ([
 	return nil, nil
 }
 
-func (f *fakeQuerier) ListNotesByStatus(ctx context.Context, arg sqlc.ListNotesByStatusParams) ([]sqlc.Note, error) {
+func (f *fakeQuerier) ListNotesByStatus(ctx context.Context, arg sqlc.ListNotesByStatusParams) ([]sqlc.ListNotesByStatusRow, error) {
 	if f.ListNotesByStatusFn != nil {
 		return f.ListNotesByStatusFn(ctx, arg)
 	}
@@ -514,6 +514,26 @@ func newTestMetrics() *metrics.Metrics {
 }
 
 // sampleNote returns a Note with sensible defaults for testing.
+// GetNoteByID and ListNotesByStatus aggregate tags and connection_count, so
+// they return their own row types rather than a bare sqlc.Note.
+func sampleNoteByIDRow(id, userID int64) sqlc.GetNoteByIDRow {
+	n := sampleNote(id, userID)
+	return sqlc.GetNoteByIDRow{
+		ID: n.ID, UserID: n.UserID, Title: n.Title, Summary: n.Summary,
+		Body: n.Body, NoteType: n.NoteType, Status: n.Status, Tlp: n.Tlp,
+		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+	}
+}
+
+func sampleNoteByStatusRow(id, userID int64) sqlc.ListNotesByStatusRow {
+	n := sampleNote(id, userID)
+	return sqlc.ListNotesByStatusRow{
+		ID: n.ID, UserID: n.UserID, Title: n.Title, Summary: n.Summary,
+		Body: n.Body, NoteType: n.NoteType, Status: n.Status, Tlp: n.Tlp,
+		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+	}
+}
+
 func sampleNote(id, userID int64) sqlc.Note {
 	return sqlc.Note{
 		ID:       id,

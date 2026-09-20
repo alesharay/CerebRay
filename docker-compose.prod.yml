@@ -50,7 +50,6 @@ services:
     build:
       context: frontend
       dockerfile: Dockerfile
-      args:
     restart: unless-stopped
     depends_on:
       - backend

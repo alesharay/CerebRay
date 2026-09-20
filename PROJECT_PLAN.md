@@ -182,7 +182,7 @@ Design principles for the dashboard and all pages:
 - [x] AI usage metrics (tokens consumed, requests, latency)
 - [x] Frontend RUM via Grafana Faro (`src/faro.ts`). PostHog dropped.
 - [x] Structured JSON logging in production (zerolog, request_id correlation)
-- [x] Prometheus scrape annotations on k8s pod template
+- [ ] Scrape config for cerebray. Pod annotations were added then removed - this cluster discovers via ServiceMonitors and cerebray has none, so /metrics is not collected yet.
 
 ### 13. Deployment
 
@@ -207,7 +207,7 @@ Design principles for the dashboard and all pages:
 | Layer | Choice | Notes |
 | --- | --- | --- |
 | Frontend framework | Vite + React 19 + TypeScript | |
-| Styling | Tailwind CSS + shadcn/ui | |
+| Styling | Tailwind CSS + shadcn utilities (cn, lucide-react) | No component library |
 | State | Zustand | |
 | Routing | React Router v7 | |
 | HTTP client | fetch / custom wrapper | |
@@ -257,16 +257,10 @@ cerebray/
 │   ├── internal/
 │   │   ├── ai/
 │   │   ├── auth/
-│   │   ├── cache/
 │   │   ├── config/
-│   │   ├── domain/
 │   │   ├── handlers/
 │   │   ├── metrics/
-│   │   ├── middleware/
-│   │   ├── repositories/
-│   │   └── services/
-│   ├── docs/
-│   │   └── openapi.yaml
+│   │   └── middleware/
 │   ├── go.mod
 │   └── go.sum
 ├── frontend/
@@ -274,14 +268,13 @@ cerebray/
 │   │   ├── api/
 │   │   ├── components/
 │   │   │   ├── layout/
-│   │   │   ├── ui/
-│   │   │   ├── notes/
-│   │   │   ├── chat/
-│   │   │   └── markdown/
+│   │   │   └── notes/
 │   │   ├── hooks/
+│   │   ├── lib/
 │   │   ├── pages/
 │   │   ├── store/
-│   │   └── types/
+│   │   ├── types/
+│   │   └── faro.ts
 │   ├── index.html
 │   ├── vite.config.ts
 │   ├── tsconfig.json

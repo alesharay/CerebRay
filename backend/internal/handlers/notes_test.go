@@ -42,11 +42,11 @@ func TestNoteHandlers_List(t *testing.T) {
 			name:  "filter by status",
 			query: "?status=active",
 			setup: func(q *fakeQuerier) {
-				q.ListNotesByStatusFn = func(_ context.Context, arg sqlc.ListNotesByStatusParams) ([]sqlc.Note, error) {
+				q.ListNotesByStatusFn = func(_ context.Context, arg sqlc.ListNotesByStatusParams) ([]sqlc.ListNotesByStatusRow, error) {
 					if arg.Status != sqlc.NoteStatusActive {
 						t.Errorf("expected status active, got %s", arg.Status)
 					}
-					return []sqlc.Note{sampleNote(10, 1)}, nil
+					return []sqlc.ListNotesByStatusRow{sampleNoteByStatusRow(10, 1)}, nil
 				}
 			},
 			wantStatus: http.StatusOK,
@@ -189,11 +189,11 @@ func TestNoteHandlers_Get(t *testing.T) {
 			name:   "existing note",
 			noteID: "42",
 			setup: func(q *fakeQuerier) {
-				q.GetNoteByIDFn = func(_ context.Context, arg sqlc.GetNoteByIDParams) (sqlc.Note, error) {
+				q.GetNoteByIDFn = func(_ context.Context, arg sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
 					if arg.ID != 42 {
 						t.Errorf("expected note ID 42, got %d", arg.ID)
 					}
-					return sampleNote(42, 1), nil
+					return sampleNoteByIDRow(42, 1), nil
 				}
 			},
 			wantStatus: http.StatusOK,
@@ -202,8 +202,8 @@ func TestNoteHandlers_Get(t *testing.T) {
 			name:   "not found",
 			noteID: "999",
 			setup: func(q *fakeQuerier) {
-				q.GetNoteByIDFn = func(_ context.Context, _ sqlc.GetNoteByIDParams) (sqlc.Note, error) {
-					return sqlc.Note{}, fmt.Errorf("no rows")
+				q.GetNoteByIDFn = func(_ context.Context, _ sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
+					return sqlc.GetNoteByIDRow{}, fmt.Errorf("no rows")
 				}
 			},
 			wantStatus: http.StatusNotFound,
@@ -381,8 +381,8 @@ func TestNoteHandlers_Promote(t *testing.T) {
 			name:   "successful promote",
 			noteID: "5",
 			setup: func(q *fakeQuerier) {
-				q.GetNoteByIDFn = func(_ context.Context, arg sqlc.GetNoteByIDParams) (sqlc.Note, error) {
-					return sampleNote(5, 1), nil
+				q.GetNoteByIDFn = func(_ context.Context, arg sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
+					return sampleNoteByIDRow(5, 1), nil
 				}
 				q.CreateConversationFn = func(_ context.Context, arg sqlc.CreateConversationParams) (sqlc.Conversation, error) {
 					return sqlc.Conversation{ID: 100, UserID: 1, Title: arg.Title}, nil
@@ -405,8 +405,8 @@ func TestNoteHandlers_Promote(t *testing.T) {
 			name:   "note not found",
 			noteID: "999",
 			setup: func(q *fakeQuerier) {
-				q.GetNoteByIDFn = func(_ context.Context, _ sqlc.GetNoteByIDParams) (sqlc.Note, error) {
-					return sqlc.Note{}, fmt.Errorf("no rows")
+				q.GetNoteByIDFn = func(_ context.Context, _ sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
+					return sqlc.GetNoteByIDRow{}, fmt.Errorf("no rows")
 				}
 			},
 			wantStatus: http.StatusNotFound,

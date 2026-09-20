@@ -9,7 +9,10 @@ import (
 )
 
 type Querier interface {
-	AddNoteTag(ctx context.Context, arg AddNoteTagParams) error
+	// Guarded by the note's owner: without this any authenticated user could
+	// attach a tag to someone else's note. Returns no rows when the note is
+	// missing or not theirs, which the handler maps to 404.
+	AddNoteTag(ctx context.Context, arg AddNoteTagParams) (int64, error)
 	CountNotesByStatus(ctx context.Context, userID int64) ([]CountNotesByStatusRow, error)
 	CreateConnection(ctx context.Context, arg CreateConnectionParams) (Connection, error)
 	CreateConversation(ctx context.Context, arg CreateConversationParams) (Conversation, error)
@@ -19,6 +22,9 @@ type Querier interface {
 	CreateNoteEvent(ctx context.Context, arg CreateNoteEventParams) (NoteEvent, error)
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	// Checks both endpoints, matching ListConnectionsForNote. Source-only would be
+	// enough for rows created after CreateConnection was scoped, but not for any
+	// cross-owner rows left behind from before that fix.
 	DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error
 	DeleteConversation(ctx context.Context, arg DeleteConversationParams) error
 	DeleteGlossaryTerm(ctx context.Context, arg DeleteGlossaryTermParams) error
@@ -33,7 +39,7 @@ type Querier interface {
 	GetLifecycleMetrics(ctx context.Context, arg GetLifecycleMetricsParams) ([]GetLifecycleMetricsRow, error)
 	GetLifecycleTrend(ctx context.Context, arg GetLifecycleTrendParams) ([]GetLifecycleTrendRow, error)
 	GetMonthlyUsage(ctx context.Context, userID *int64) (GetMonthlyUsageRow, error)
-	GetNoteByID(ctx context.Context, arg GetNoteByIDParams) (Note, error)
+	GetNoteByID(ctx context.Context, arg GetNoteByIDParams) (GetNoteByIDRow, error)
 	GetNoteBySourceChat(ctx context.Context, arg GetNoteBySourceChatParams) (Note, error)
 	GetNoteCurrentStatus(ctx context.Context, arg GetNoteCurrentStatusParams) (NoteStatus, error)
 	GetNoteTypeDistribution(ctx context.Context, userID int64) ([]GetNoteTypeDistributionRow, error)
@@ -47,7 +53,7 @@ type Querier interface {
 	ListConversations(ctx context.Context, arg ListConversationsParams) ([]Conversation, error)
 	ListGlossaryTerms(ctx context.Context, userID int64) ([]ListGlossaryTermsRow, error)
 	ListMessages(ctx context.Context, conversationID int64) ([]Message, error)
-	ListNotesByStatus(ctx context.Context, arg ListNotesByStatusParams) ([]Note, error)
+	ListNotesByStatus(ctx context.Context, arg ListNotesByStatusParams) ([]ListNotesByStatusRow, error)
 	ListNotesByTag(ctx context.Context, arg ListNotesByTagParams) ([]Note, error)
 	ListNotesByUser(ctx context.Context, arg ListNotesByUserParams) ([]ListNotesByUserRow, error)
 	ListTagsByUser(ctx context.Context, userID int64) ([]ListTagsByUserRow, error)

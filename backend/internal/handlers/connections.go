@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/aray/cerebray/backend/db/sqlc"
 	"github.com/aray/cerebray/backend/internal/middleware"
@@ -65,6 +66,20 @@ func (h *ConnectionHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			Error(w, http.StatusNotFound, "note not found")
 			return
+		}
+		// UNIQUE (source_id, target_id) and CHECK (source_id <> target_id) are
+		// both reachable by ordinary use: re-linking two notes, or linking a
+		// note to itself. Neither is a server error.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				Error(w, http.StatusConflict, "these notes are already connected")
+				return
+			case "23514":
+				Error(w, http.StatusBadRequest, "a note cannot be connected to itself")
+				return
+			}
 		}
 		Error(w, http.StatusInternalServerError, "failed to create connection")
 		return

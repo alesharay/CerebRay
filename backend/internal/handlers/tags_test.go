@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/aray/cerebray/backend/db/sqlc"
 )
 
@@ -70,6 +72,12 @@ func TestTagHandlers_AddToNote(t *testing.T) {
 			var linked bool
 
 			q := &fakeQuerier{}
+			q.GetNoteByIDFn = func(_ context.Context, arg sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
+				if arg.UserID != 1 {
+					t.Errorf("ownership check userID = %d, want 1", arg.UserID)
+				}
+				return sampleNoteByIDRow(arg.ID, arg.UserID), nil
+			}
 			q.CreateTagFn = func(_ context.Context, arg sqlc.CreateTagParams) (sqlc.Tag, error) {
 				created = true
 				gotName = arg.Name
@@ -78,7 +86,7 @@ func TestTagHandlers_AddToNote(t *testing.T) {
 				}
 				return sqlc.Tag{ID: 7, UserID: arg.UserID, Name: arg.Name}, nil
 			}
-			q.AddNoteTagFn = func(_ context.Context, arg sqlc.AddNoteTagParams) error {
+			q.AddNoteTagFn = func(_ context.Context, arg sqlc.AddNoteTagParams) (int64, error) {
 				linked = true
 				if arg.NoteID != 42 {
 					t.Errorf("AddNoteTag noteID = %d, want 42", arg.NoteID)
@@ -86,7 +94,10 @@ func TestTagHandlers_AddToNote(t *testing.T) {
 				if arg.TagID != 7 {
 					t.Errorf("AddNoteTag tagID = %d, want 7", arg.TagID)
 				}
-				return nil
+				if arg.UserID != 1 {
+					t.Errorf("AddNoteTag userID = %d, want 1 (unscoped insert)", arg.UserID)
+				}
+				return arg.NoteID, nil
 			}
 
 			h := NewTagHandlers(q)
@@ -111,6 +122,44 @@ func TestTagHandlers_AddToNote(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// AddNoteTag originally took only {note_id, tag_id}, so any authenticated user
+// could attach a tag to anyone's note. Ownership is now checked before any
+// write happens, and the insert carries user_id as a second line of defence.
+func TestTagHandlers_AddToNote_RejectsForeignNote(t *testing.T) {
+	var created, linked bool
+
+	q := &fakeQuerier{}
+	q.GetNoteByIDFn = func(_ context.Context, _ sqlc.GetNoteByIDParams) (sqlc.GetNoteByIDRow, error) {
+		// Note 42 belongs to someone else, so the scoped lookup finds nothing.
+		return sqlc.GetNoteByIDRow{}, pgx.ErrNoRows
+	}
+	q.CreateTagFn = func(_ context.Context, arg sqlc.CreateTagParams) (sqlc.Tag, error) {
+		created = true
+		return sqlc.Tag{ID: 7, UserID: arg.UserID, Name: arg.Name}, nil
+	}
+	q.AddNoteTagFn = func(_ context.Context, arg sqlc.AddNoteTagParams) (int64, error) {
+		linked = true
+		return arg.NoteID, nil
+	}
+
+	h := NewTagHandlers(q)
+	r := reqWithUserAndChiCtx("POST", "/api/v1/notes/42/tags",
+		strings.NewReader(`{"name":"stolen"}`), 99, map[string]string{"id": "42"})
+	w := httptest.NewRecorder()
+
+	h.AddToNote(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("AddToNote() on a foreign note status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+	if created {
+		t.Error("CreateTag was called for a note the caller does not own")
+	}
+	if linked {
+		t.Error("AddNoteTag was called for a note the caller does not own")
 	}
 }
 

@@ -11,9 +11,18 @@ INSERT INTO tags (user_id, name) VALUES ($1, $2)
 ON CONFLICT (user_id, name) DO UPDATE SET name = EXCLUDED.name
 RETURNING *;
 
--- name: AddNoteTag :exec
-INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)
-ON CONFLICT DO NOTHING;
+-- name: AddNoteTag :one
+-- Guarded by the note's owner: without this any authenticated user could
+-- attach a tag to someone else's note. Returns no rows when the note is
+-- missing or not theirs, which the handler maps to 404.
+INSERT INTO note_tags (note_id, tag_id)
+SELECT sqlc.arg(note_id)::bigint, sqlc.arg(tag_id)::bigint
+WHERE EXISTS (
+    SELECT 1 FROM notes n
+    WHERE n.id = sqlc.arg(note_id) AND n.user_id = sqlc.arg(user_id)
+)
+ON CONFLICT DO NOTHING
+RETURNING note_id;
 
 -- name: RemoveNoteTag :exec
 DELETE FROM note_tags nt

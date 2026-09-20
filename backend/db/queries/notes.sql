@@ -4,7 +4,7 @@ SELECT n.*,
     count(DISTINCT c.id) as connection_count
 FROM notes n
 LEFT JOIN note_tags nt ON nt.note_id = n.id
-LEFT JOIN tags t ON t.id = nt.tag_id
+LEFT JOIN tags t ON t.id = nt.tag_id AND t.user_id = n.user_id
 LEFT JOIN (
     SELECT id, source_id as note_id FROM connections
     UNION ALL
@@ -16,13 +16,36 @@ ORDER BY n.created_at DESC
 LIMIT $2 OFFSET $3;
 
 -- name: ListNotesByStatus :many
-SELECT * FROM notes
-WHERE user_id = $1 AND status = $2
-ORDER BY created_at DESC
+SELECT n.*,
+    (array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL))::text[] as tags,
+    count(DISTINCT c.id) as connection_count
+FROM notes n
+LEFT JOIN note_tags nt ON nt.note_id = n.id
+LEFT JOIN tags t ON t.id = nt.tag_id AND t.user_id = n.user_id
+LEFT JOIN (
+    SELECT id, source_id as note_id FROM connections
+    UNION ALL
+    SELECT id, target_id as note_id FROM connections
+) c ON c.note_id = n.id
+WHERE n.user_id = $1 AND n.status = $2
+GROUP BY n.id
+ORDER BY n.created_at DESC
 LIMIT $3 OFFSET $4;
 
 -- name: GetNoteByID :one
-SELECT * FROM notes WHERE id = $1 AND user_id = $2;
+SELECT n.*,
+    (array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL))::text[] as tags,
+    count(DISTINCT c.id) as connection_count
+FROM notes n
+LEFT JOIN note_tags nt ON nt.note_id = n.id
+LEFT JOIN tags t ON t.id = nt.tag_id AND t.user_id = n.user_id
+LEFT JOIN (
+    SELECT id, source_id as note_id FROM connections
+    UNION ALL
+    SELECT id, target_id as note_id FROM connections
+) c ON c.note_id = n.id
+WHERE n.id = $1 AND n.user_id = $2
+GROUP BY n.id;
 
 -- name: CreateNote :one
 INSERT INTO notes (

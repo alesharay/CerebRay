@@ -132,7 +132,19 @@ func (q *Queries) DeleteNote(ctx context.Context, arg DeleteNoteParams) error {
 }
 
 const getNoteByID = `-- name: GetNoteByID :one
-SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector FROM notes WHERE id = $1 AND user_id = $2
+SELECT n.id, n.user_id, n.title, n.summary, n.laymans_terms, n.analogy, n.core_idea, n.body, n.components, n.why_it_matters, n.examples, n.templates, n.additional, n.note_type, n.status, n.tlp, n.source_chat_id, n.created_at, n.updated_at, n.search_vector,
+    (array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL))::text[] as tags,
+    count(DISTINCT c.id) as connection_count
+FROM notes n
+LEFT JOIN note_tags nt ON nt.note_id = n.id
+LEFT JOIN tags t ON t.id = nt.tag_id AND t.user_id = n.user_id
+LEFT JOIN (
+    SELECT id, source_id as note_id FROM connections
+    UNION ALL
+    SELECT id, target_id as note_id FROM connections
+) c ON c.note_id = n.id
+WHERE n.id = $1 AND n.user_id = $2
+GROUP BY n.id
 `
 
 type GetNoteByIDParams struct {
@@ -140,9 +152,34 @@ type GetNoteByIDParams struct {
 	UserID int64 `json:"user_id"`
 }
 
-func (q *Queries) GetNoteByID(ctx context.Context, arg GetNoteByIDParams) (Note, error) {
+type GetNoteByIDRow struct {
+	ID              int64       `json:"id"`
+	UserID          int64       `json:"user_id"`
+	Title           string      `json:"title"`
+	Summary         string      `json:"summary"`
+	LaymansTerms    string      `json:"laymans_terms"`
+	Analogy         string      `json:"analogy"`
+	CoreIdea        string      `json:"core_idea"`
+	Body            string      `json:"body"`
+	Components      string      `json:"components"`
+	WhyItMatters    string      `json:"why_it_matters"`
+	Examples        string      `json:"examples"`
+	Templates       string      `json:"templates"`
+	Additional      string      `json:"additional"`
+	NoteType        NoteType    `json:"note_type"`
+	Status          NoteStatus  `json:"status"`
+	Tlp             NoteTlp     `json:"tlp"`
+	SourceChatID    *int64      `json:"source_chat_id"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	SearchVector    interface{} `json:"search_vector"`
+	Tags            []string    `json:"tags"`
+	ConnectionCount int64       `json:"connection_count"`
+}
+
+func (q *Queries) GetNoteByID(ctx context.Context, arg GetNoteByIDParams) (GetNoteByIDRow, error) {
 	row := q.db.QueryRow(ctx, getNoteByID, arg.ID, arg.UserID)
-	var i Note
+	var i GetNoteByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -164,6 +201,8 @@ func (q *Queries) GetNoteByID(ctx context.Context, arg GetNoteByIDParams) (Note,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SearchVector,
+		&i.Tags,
+		&i.ConnectionCount,
 	)
 	return i, err
 }
@@ -206,9 +245,20 @@ func (q *Queries) GetNoteBySourceChat(ctx context.Context, arg GetNoteBySourceCh
 }
 
 const listNotesByStatus = `-- name: ListNotesByStatus :many
-SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, components, why_it_matters, examples, templates, additional, note_type, status, tlp, source_chat_id, created_at, updated_at, search_vector FROM notes
-WHERE user_id = $1 AND status = $2
-ORDER BY created_at DESC
+SELECT n.id, n.user_id, n.title, n.summary, n.laymans_terms, n.analogy, n.core_idea, n.body, n.components, n.why_it_matters, n.examples, n.templates, n.additional, n.note_type, n.status, n.tlp, n.source_chat_id, n.created_at, n.updated_at, n.search_vector,
+    (array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL))::text[] as tags,
+    count(DISTINCT c.id) as connection_count
+FROM notes n
+LEFT JOIN note_tags nt ON nt.note_id = n.id
+LEFT JOIN tags t ON t.id = nt.tag_id AND t.user_id = n.user_id
+LEFT JOIN (
+    SELECT id, source_id as note_id FROM connections
+    UNION ALL
+    SELECT id, target_id as note_id FROM connections
+) c ON c.note_id = n.id
+WHERE n.user_id = $1 AND n.status = $2
+GROUP BY n.id
+ORDER BY n.created_at DESC
 LIMIT $3 OFFSET $4
 `
 
@@ -219,7 +269,32 @@ type ListNotesByStatusParams struct {
 	Offset int32      `json:"offset"`
 }
 
-func (q *Queries) ListNotesByStatus(ctx context.Context, arg ListNotesByStatusParams) ([]Note, error) {
+type ListNotesByStatusRow struct {
+	ID              int64       `json:"id"`
+	UserID          int64       `json:"user_id"`
+	Title           string      `json:"title"`
+	Summary         string      `json:"summary"`
+	LaymansTerms    string      `json:"laymans_terms"`
+	Analogy         string      `json:"analogy"`
+	CoreIdea        string      `json:"core_idea"`
+	Body            string      `json:"body"`
+	Components      string      `json:"components"`
+	WhyItMatters    string      `json:"why_it_matters"`
+	Examples        string      `json:"examples"`
+	Templates       string      `json:"templates"`
+	Additional      string      `json:"additional"`
+	NoteType        NoteType    `json:"note_type"`
+	Status          NoteStatus  `json:"status"`
+	Tlp             NoteTlp     `json:"tlp"`
+	SourceChatID    *int64      `json:"source_chat_id"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+	SearchVector    interface{} `json:"search_vector"`
+	Tags            []string    `json:"tags"`
+	ConnectionCount int64       `json:"connection_count"`
+}
+
+func (q *Queries) ListNotesByStatus(ctx context.Context, arg ListNotesByStatusParams) ([]ListNotesByStatusRow, error) {
 	rows, err := q.db.Query(ctx, listNotesByStatus,
 		arg.UserID,
 		arg.Status,
@@ -230,9 +305,9 @@ func (q *Queries) ListNotesByStatus(ctx context.Context, arg ListNotesByStatusPa
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Note{}
+	items := []ListNotesByStatusRow{}
 	for rows.Next() {
-		var i Note
+		var i ListNotesByStatusRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -254,6 +329,8 @@ func (q *Queries) ListNotesByStatus(ctx context.Context, arg ListNotesByStatusPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SearchVector,
+			&i.Tags,
+			&i.ConnectionCount,
 		); err != nil {
 			return nil, err
 		}
@@ -333,7 +410,7 @@ SELECT n.id, n.user_id, n.title, n.summary, n.laymans_terms, n.analogy, n.core_i
     count(DISTINCT c.id) as connection_count
 FROM notes n
 LEFT JOIN note_tags nt ON nt.note_id = n.id
-LEFT JOIN tags t ON t.id = nt.tag_id
+LEFT JOIN tags t ON t.id = nt.tag_id AND t.user_id = n.user_id
 LEFT JOIN (
     SELECT id, source_id as note_id FROM connections
     UNION ALL

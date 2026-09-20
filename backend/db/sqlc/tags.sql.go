@@ -9,19 +9,31 @@ import (
 	"context"
 )
 
-const addNoteTag = `-- name: AddNoteTag :exec
-INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)
+const addNoteTag = `-- name: AddNoteTag :one
+INSERT INTO note_tags (note_id, tag_id)
+SELECT $1::bigint, $2::bigint
+WHERE EXISTS (
+    SELECT 1 FROM notes n
+    WHERE n.id = $1 AND n.user_id = $3
+)
 ON CONFLICT DO NOTHING
+RETURNING note_id
 `
 
 type AddNoteTagParams struct {
 	NoteID int64 `json:"note_id"`
 	TagID  int64 `json:"tag_id"`
+	UserID int64 `json:"user_id"`
 }
 
-func (q *Queries) AddNoteTag(ctx context.Context, arg AddNoteTagParams) error {
-	_, err := q.db.Exec(ctx, addNoteTag, arg.NoteID, arg.TagID)
-	return err
+// Guarded by the note's owner: without this any authenticated user could
+// attach a tag to someone else's note. Returns no rows when the note is
+// missing or not theirs, which the handler maps to 404.
+func (q *Queries) AddNoteTag(ctx context.Context, arg AddNoteTagParams) (int64, error) {
+	row := q.db.QueryRow(ctx, addNoteTag, arg.NoteID, arg.TagID, arg.UserID)
+	var note_id int64
+	err := row.Scan(&note_id)
+	return note_id, err
 }
 
 const createTag = `-- name: CreateTag :one
