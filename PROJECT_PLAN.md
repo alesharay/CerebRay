@@ -182,7 +182,7 @@ Design principles for the dashboard and all pages:
 - [x] AI usage metrics (tokens consumed, requests, latency)
 - [x] Frontend RUM via Grafana Faro (`src/faro.ts`). PostHog dropped.
 - [x] Structured JSON logging in production (zerolog, request_id correlation)
-- [ ] Scrape config for cerebray. Pod annotations were added then removed - this cluster discovers via ServiceMonitors and cerebray has none, so /metrics is not collected yet.
+- [x] Scrape config for cerebray. Pod annotations were added then removed - this cluster discovers via ServiceMonitors. A ServiceMonitor now exists and Prometheus reports the target UP.
 
 ### 13. Deployment
 
@@ -309,12 +309,15 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
       single node, which is what caused the 2026-09-20 outage. Keycloak already uses `nfs`.
       Requires a dump and restore since a bound PVC cannot be retargeted.
 - [ ] **Markdown rendering.** Note fields store Markdown but the UI renders raw text.
-- [ ] **ServiceMonitor for cerebray** so the `/metrics` endpoint is actually scraped.
+- [x] **ServiceMonitor for cerebray.** Prometheus scrapes the backend every 30s. Needed
+      two labels: `release: kube-prometheus-stack` on the ServiceMonitor, which is what the
+      Prometheus CR selects on, and `app: backend` on the *Service metadata* - a
+      ServiceMonitor selector matches Service labels, not `spec.selector`.
 - [ ] **Migration Job in the deploy path.** Migrations are applied by hand today.
-- [ ] Raise `fs.inotify.max_user_instances` persistently. Add a `provision:` block to
-      `~/.colima/default/colima.yaml` so it survives `colima stop`/`start`, and wire the
-      existing (currently undeployed) `sysctl-fix` task in the homelab Taskfile into
-      `create-cluster` as a second line of defence.
+- [x] Raise `fs.inotify.max_user_instances` persistently. Two layers: a DaemonSet in
+      `homelab-gitops/infrastructure/custom-resources/sysctl-inotify.yaml` that Flux
+      reapplies every reconcile (512 -> 8192 on all three nodes, verified), and a
+      `provision:` block in `~/.colima/default/colima.yaml` so a VM restart keeps it.
 
 ## Notes and Decisions Log
 
@@ -333,7 +336,7 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
   had silently broken every ExternalSecret in the cluster - all seven now sync.
 
 - **2026-04-10**: Phase 11 (Testing) mostly complete. Enabled sqlc Querier interface for handler mocking. Backend: 28 handler unit tests (notes CRUD/promote/search, chat usage, health, helpers) + 5 auth middleware tests with miniredis. Frontend: 43 tests across 8 files (zettel parser, NoteCard, Sidebar, DashboardPage, EchoesPage, LandingPage, authStore, utils). Added smoke test Taskfile task. Integration tests (testcontainers) and Playwright e2e have since landed - see `backend/internal/handlers/integration_test.go` and `frontend/e2e/`.
-- **2026-04-10**: Phase 12 (Observability) complete. Added Prometheus metrics via `internal/metrics/` package: HTTP request counter/histogram/gauge and AI token/request/duration metrics. Chi middleware records HTTP metrics using route patterns for low cardinality. `/metrics` endpoint exposed unauthenticated for Prometheus scraping. Enhanced structured logging with `request_id` correlation in all request logs, plus `RequestLogger` context helper for handler-level logs with user_id. PostHog skipped. Correction (2026-09-20): the pod annotations were never applied and would be inert anyway - this cluster discovers targets via ServiceMonitors, and no ServiceMonitor exists for cerebray, so `/metrics` is not scraped yet. `/metrics` is also not routed by the ingress, so it is reachable in-cluster only.
+- **2026-04-10**: Phase 12 (Observability) complete. Added Prometheus metrics via `internal/metrics/` package: HTTP request counter/histogram/gauge and AI token/request/duration metrics. Chi middleware records HTTP metrics using route patterns for low cardinality. `/metrics` endpoint exposed unauthenticated for Prometheus scraping. Enhanced structured logging with `request_id` correlation in all request logs, plus `RequestLogger` context helper for handler-level logs with user_id. PostHog skipped. Correction (2026-09-20): the pod annotations were never applied and would be inert anyway - this cluster discovers targets via ServiceMonitors, and no ServiceMonitor existed for cerebray. Resolved 2026-09-20 - one now exists and the target reports UP. `/metrics` is still not routed by the ingress, so it is reachable in-cluster only.
 - **2026-04-10**: Phase 10e/10f complete. Interactive knowledge graph with zoom/pan (d3-zoom), drag (d3-drag), hover highlighting, HTML tooltips, color legend, search/filter, and SPA navigation. Cluster visualization deferred until 100+ notes. Echoes page simplified to title + age + actions. Chat follow-up suggestions with Save to Inbox cards. Refresh from chat action on note detail page. Dashboard trend sparklines via new GetLifecycleTrend backend query (weekly counts over 90 days).
 - **2026-04-10**: Workflow refactor complete (Phase 10). Inbox is now quick-capture, promote triggers AI expansion, note detail page has embedded chat. Chat page removed from nav. Added Phase 10e (interactive knowledge graph) and 10f (UX fixes) based on user testing. Broken d3 zoom placeholder fixed. SSE buffer flush bug found and fixed (done event not processed). Zettel parser upgraded for multi-line field content. Deployed to homelab k8s with all infrastructure operational.
 - **2026-04-09**: Added Phase 10 (Analytics Dashboard). New `note_events` table to track status transitions automatically. Dashboard redesign with inbox overview, lifecycle metrics, Zettelkasten strength score, conversation conversion rate, AI budget, and stale note detection. All lifecycle data is system-tracked, no manual entry. UI identity established: Quicksand font, warm palette, notebook aesthetic - explicitly not a Grafana-style monitoring UI.
