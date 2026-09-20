@@ -8,6 +8,8 @@ vars:
   BACKEND_DIR: backend
   FRONTEND_DIR: frontend
   BINARY_OUT: backend/bin/server
+  # Pinned toolchain versions. See db:sqlc:generate before bumping sqlc.
+  SQLC_VERSION: v1.30.0
   # Deployment config. Override via deploy.env or environment variables.
   # Defaults target the homelab environment.
   REGISTRY: '{{.REGISTRY | default "registry.homelab"}}'
@@ -176,7 +178,10 @@ tasks:
     desc: Regenerate Go code from sqlc queries
     dir: "{{.BACKEND_DIR}}"
     cmds:
-      - sqlc generate
+      # Pinned: v1.31+ emits pointers for nullable enums, which breaks the
+      # NullNoteStatus call sites in internal/handlers/notes.go. Bumping this
+      # means fixing those in the same commit.
+      - go run github.com/sqlc-dev/sqlc/cmd/sqlc@{{.SQLC_VERSION}} generate
 
   db:seed:
     desc: Seed database with sample data for local development
@@ -318,8 +323,6 @@ tasks:
         sh: echo "ts-$(date +%s)-$(git rev-parse --short HEAD)"
     cmds:
       - docker build
-          --build-arg VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY:-}
-          --build-arg VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST:-}
           -t {{.REGISTRY}}/cerebray-frontend:{{.TAG}}
           -t {{.REGISTRY}}/cerebray-frontend:latest
           -f frontend/Dockerfile frontend/
@@ -389,11 +392,47 @@ tasks:
           --from-literal=keycloak-client-secret="${KEYCLOAK_CLIENT_SECRET:-}" \
           --save-config --dry-run=client -o yaml | kubectl apply -f -
 
+  k8s:manifests:guard:
+    desc: Refuse to regenerate manifests into a stale or dirty gitops checkout
+    silent: true
+    cmds:
+      - |
+        set -e
+        DIR="{{.GITOPS_DIR}}"
+        if [ ! -d "$DIR/.git" ]; then
+          echo "ERROR: $DIR is not a git checkout. Set GITOPS_DIR in deploy.env." >&2
+          exit 1
+        fi
+        git -C "$DIR" fetch --quiet origin main
+        LOCAL=$(git -C "$DIR" rev-parse HEAD)
+        REMOTE=$(git -C "$DIR" rev-parse origin/main)
+        if [ "$LOCAL" != "$REMOTE" ]; then
+          BEHIND=$(git -C "$DIR" rev-list --count HEAD..origin/main)
+          echo "ERROR: gitops checkout is $BEHIND commit(s) behind origin/main." >&2
+          echo "Flux image automation commits there continuously; regenerating now" >&2
+          echo "would revert those image tags. Run: git -C \"$DIR\" pull --ff-only" >&2
+          exit 1
+        fi
+        if [ -n "$(git -C "$DIR" status --porcelain -- apps/base/cerebray)" ]; then
+          echo "ERROR: uncommitted changes under apps/base/cerebray in the gitops repo." >&2
+          echo "Commit or stash them first so the regen diff is reviewable." >&2
+          exit 1
+        fi
+        echo "gitops checkout is current with origin/main"
+
   k8s:manifests:
     desc: Write all cerebray k8s manifests to GITOPS_DIR/apps/base/cerebray (idempotent)
     vars:
       D: '{{.MANIFESTS_DIR}}'
+      # Flux image automation owns these tags. Reuse whatever is already in the
+      # manifest so regenerating does not revert a deployed image to :latest
+      # (CI only pushes ts-* tags, so :latest would ImagePullBackOff).
+      BACKEND_TAG:
+        sh: sed -n 's|.*cerebray-backend:\([^ ]*\).*|\1|p' "{{.MANIFESTS_DIR}}/backend.yaml" 2>/dev/null | head -1 || true
+      FRONTEND_TAG:
+        sh: sed -n 's|.*cerebray-frontend:\([^ ]*\).*|\1|p' "{{.MANIFESTS_DIR}}/frontend.yaml" 2>/dev/null | head -1 || true
     cmds:
+      - task: k8s:manifests:guard
       - mkdir -p {{.D}}
       - |
         # Register cerebray in apps/base/kustomization.yaml if not already present
@@ -423,7 +462,7 @@ tasks:
         EOF
       - |
         cat > {{.D}}/secret.yaml << 'EOF'
-        # All cerebray credentials pulled from Vault.
+        # All cerebray credentials pulled from Vault at path {{.VAULT_PATH}}.
         # Run: task secrets:vault  to populate Vault before deploying.
         apiVersion: external-secrets.io/v1beta1
         kind: ExternalSecret
@@ -471,8 +510,13 @@ tasks:
                 namespace: cerebray
           values:
             image:
-              tag: "16"
-              pullPolicy: IfNotPresent
+              # WARNING: the live data directory is PG_VERSION 18 (the chart's
+              # `latest` drifted there). A PG16 image refuses to start against
+              # it, so do NOT pin this back to "16" without a dump and restore.
+              # Pinning to an explicit 18.x tag is the right long-term fix and
+              # belongs in a planned maintenance window, not a manifest regen.
+              tag: latest
+              pullPolicy: Always
             auth:
               username: cerebray
               database: cerebray
@@ -545,14 +589,10 @@ tasks:
             metadata:
               labels:
                 app: backend
-              annotations:
-                prometheus.io/scrape: "true"
-                prometheus.io/port: "8080"
-                prometheus.io/path: "/metrics"
             spec:
               containers:
                 - name: backend
-                  image: {{.REGISTRY}}/cerebray-backend:latest # {"$imagepolicy": "flux-system:cerebray-backend"}
+                  image: {{.REGISTRY}}/cerebray-backend:{{.BACKEND_TAG | default "latest"}} # {"$imagepolicy": "flux-system:cerebray-backend"}
                   imagePullPolicy: Always
                   ports:
                     - containerPort: 8080
@@ -583,23 +623,40 @@ tasks:
                         secretKeyRef:
                           name: cerebray-secrets
                           key: anthropic-api-key
+                    - name: KEYCLOAK_ISSUER_URL
+                      valueFrom:
+                        secretKeyRef:
+                          name: cerebray-secrets
+                          key: keycloak-issuer-url
+                    - name: KEYCLOAK_CLIENT_ID
+                      value: cerebray
                     - name: KEYCLOAK_CLIENT_SECRET
                       valueFrom:
                         secretKeyRef:
                           name: cerebray-secrets
                           key: keycloak-client-secret
+                    # Alpine does not trust the homelab CA, so point Go at the
+                    # bundle mounted below. Without this, the Keycloak token
+                    # exchange fails with x509 unknown authority.
+                    - name: SSL_CERT_FILE
+                      value: /etc/ssl/homelab/ca-certificates.crt
                     - name: AI_ENABLED
                       value: "true"
                     - name: AI_MODEL
                       value: "claude-sonnet-4-6"
                     - name: AI_MONTHLY_TOKEN_BUDGET
                       value: "2000000"
+                  volumeMounts:
+                    - name: homelab-ca
+                      mountPath: /etc/ssl/homelab
+                      readOnly: true
                   resources:
                     requests:
                       memory: 128Mi
                       cpu: 50m
                     limits:
-                      memory: 256Mi
+                      # SSE streams to Anthropic are long lived; 256Mi OOMKills them.
+                      memory: 512Mi
                       cpu: 500m
                   readinessProbe:
                     httpGet:
@@ -613,6 +670,10 @@ tasks:
                       port: 8080
                     initialDelaySeconds: 15
                     periodSeconds: 30
+              volumes:
+                - name: homelab-ca
+                  configMap:
+                    name: homelab-ca-bundle
         ---
         apiVersion: v1
         kind: Service
@@ -645,7 +706,7 @@ tasks:
             spec:
               containers:
                 - name: frontend
-                  image: {{.REGISTRY}}/cerebray-frontend:latest # {"$imagepolicy": "flux-system:cerebray-frontend"}
+                  image: {{.REGISTRY}}/cerebray-frontend:{{.FRONTEND_TAG | default "latest"}} # {"$imagepolicy": "flux-system:cerebray-frontend"}
                   imagePullPolicy: Always
                   ports:
                     - containerPort: 80
