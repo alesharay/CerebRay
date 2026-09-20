@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/aray/cerebray/backend/db/sqlc"
 	"github.com/aray/cerebray/backend/internal/middleware"
@@ -17,13 +20,17 @@ func NewConnectionHandlers(q sqlc.Querier) *ConnectionHandlers {
 }
 
 func (h *ConnectionHandlers) ListForNote(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
 	noteID, err := URLParamInt64(r, "id")
 	if err != nil {
 		Error(w, http.StatusBadRequest, "invalid note ID")
 		return
 	}
 
-	connections, err := h.queries.ListConnectionsForNote(r.Context(), noteID)
+	connections, err := h.queries.ListConnectionsForNote(r.Context(), sqlc.ListConnectionsForNoteParams{
+		SourceID: noteID,
+		UserID:   userID,
+	})
 	if err != nil {
 		Error(w, http.StatusInternalServerError, "failed to list connections")
 		return
@@ -38,6 +45,8 @@ type createConnectionRequest struct {
 }
 
 func (h *ConnectionHandlers) Create(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+
 	var req createConnectionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		Error(w, http.StatusBadRequest, "invalid request body")
@@ -48,8 +57,15 @@ func (h *ConnectionHandlers) Create(w http.ResponseWriter, r *http.Request) {
 		SourceID: req.SourceID,
 		TargetID: req.TargetID,
 		Label:    req.Label,
+		UserID:   userID,
 	})
 	if err != nil {
+		// The insert is guarded by an EXISTS on both notes, so no rows means
+		// at least one of them is missing or belongs to someone else.
+		if errors.Is(err, pgx.ErrNoRows) {
+			Error(w, http.StatusNotFound, "note not found")
+			return
+		}
 		Error(w, http.StatusInternalServerError, "failed to create connection")
 		return
 	}
@@ -57,13 +73,17 @@ func (h *ConnectionHandlers) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ConnectionHandlers) Delete(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
 	connID, err := URLParamInt64(r, "id")
 	if err != nil {
 		Error(w, http.StatusBadRequest, "invalid connection ID")
 		return
 	}
 
-	if err := h.queries.DeleteConnection(r.Context(), connID); err != nil {
+	if err := h.queries.DeleteConnection(r.Context(), sqlc.DeleteConnectionParams{
+		ID:     connID,
+		UserID: userID,
+	}); err != nil {
 		Error(w, http.StatusInternalServerError, "failed to delete connection")
 		return
 	}

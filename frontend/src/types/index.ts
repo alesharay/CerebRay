@@ -30,8 +30,10 @@ export interface Note {
   status: NoteStatus
   tlp: NoteTLP
   source_chat_id?: number
+  // Only the list endpoint aggregates these; single-note, status and tag
+  // queries return the bare row without them.
   tags?: string[]
-  connection_count: number
+  connection_count?: number
   created_at: string
   updated_at: string
 }

@@ -329,7 +329,7 @@ func (q *Queries) ListNotesByTag(ctx context.Context, arg ListNotesByTagParams) 
 
 const listNotesByUser = `-- name: ListNotesByUser :many
 SELECT n.id, n.user_id, n.title, n.summary, n.laymans_terms, n.analogy, n.core_idea, n.body, n.components, n.why_it_matters, n.examples, n.templates, n.additional, n.note_type, n.status, n.tlp, n.source_chat_id, n.created_at, n.updated_at, n.search_vector,
-    array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL) as tag_names,
+    (array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL))::text[] as tags,
     count(DISTINCT c.id) as connection_count
 FROM notes n
 LEFT JOIN note_tags nt ON nt.note_id = n.id
@@ -372,7 +372,7 @@ type ListNotesByUserRow struct {
 	CreatedAt       time.Time   `json:"created_at"`
 	UpdatedAt       time.Time   `json:"updated_at"`
 	SearchVector    interface{} `json:"search_vector"`
-	TagNames        interface{} `json:"tag_names"`
+	Tags            []string    `json:"tags"`
 	ConnectionCount int64       `json:"connection_count"`
 }
 
@@ -406,7 +406,7 @@ func (q *Queries) ListNotesByUser(ctx context.Context, arg ListNotesByUserParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SearchVector,
-			&i.TagNames,
+			&i.Tags,
 			&i.ConnectionCount,
 		); err != nil {
 			return nil, err
@@ -477,7 +477,7 @@ SELECT id, user_id, title, summary, laymans_terms, analogy, core_idea, body, com
     ts_headline('english', title || ' - ' || summary || ' ' || body,
         plainto_tsquery('english', $2),
         'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
-    ) as snippet
+    )::text as snippet
 FROM notes
 WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2)
 ORDER BY ts_rank(search_vector, plainto_tsquery('english', $2)) DESC
@@ -512,7 +512,7 @@ type SearchNotesRow struct {
 	CreatedAt    time.Time   `json:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at"`
 	SearchVector interface{} `json:"search_vector"`
-	Snippet      []byte      `json:"snippet"`
+	Snippet      string      `json:"snippet"`
 }
 
 func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]SearchNotesRow, error) {

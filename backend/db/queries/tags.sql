@@ -16,7 +16,9 @@ INSERT INTO note_tags (note_id, tag_id) VALUES ($1, $2)
 ON CONFLICT DO NOTHING;
 
 -- name: RemoveNoteTag :exec
-DELETE FROM note_tags WHERE note_id = $1 AND tag_id = $2;
+DELETE FROM note_tags nt
+USING notes n
+WHERE nt.note_id = $1 AND nt.tag_id = $2 AND n.id = nt.note_id AND n.user_id = $3;
 
 -- name: GetTagsForNote :many
 SELECT t.* FROM tags t

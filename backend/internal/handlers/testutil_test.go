@@ -29,7 +29,7 @@ type fakeQuerier struct {
 	CreateNoteEventFn              func(ctx context.Context, arg sqlc.CreateNoteEventParams) (sqlc.NoteEvent, error)
 	CreateTagFn                    func(ctx context.Context, arg sqlc.CreateTagParams) (sqlc.Tag, error)
 	CreateUserFn                   func(ctx context.Context, arg sqlc.CreateUserParams) (sqlc.User, error)
-	DeleteConnectionFn             func(ctx context.Context, id int64) error
+	DeleteConnectionFn             func(ctx context.Context, arg sqlc.DeleteConnectionParams) error
 	DeleteConversationFn           func(ctx context.Context, arg sqlc.DeleteConversationParams) error
 	DeleteGlossaryTermFn           func(ctx context.Context, arg sqlc.DeleteGlossaryTermParams) error
 	DeleteNoteFn                   func(ctx context.Context, arg sqlc.DeleteNoteParams) error
@@ -53,7 +53,7 @@ type fakeQuerier struct {
 	GetUserByEmailFn               func(ctx context.Context, email string) (sqlc.User, error)
 	GetUserByIDFn                  func(ctx context.Context, id int64) (sqlc.User, error)
 	GetUserByOIDCSubjectFn         func(ctx context.Context, oidcSubject string) (sqlc.User, error)
-	ListConnectionsForNoteFn       func(ctx context.Context, sourceID int64) ([]sqlc.ListConnectionsForNoteRow, error)
+	ListConnectionsForNoteFn       func(ctx context.Context, arg sqlc.ListConnectionsForNoteParams) ([]sqlc.ListConnectionsForNoteRow, error)
 	ListConversationsFn            func(ctx context.Context, arg sqlc.ListConversationsParams) ([]sqlc.Conversation, error)
 	ListGlossaryTermsFn            func(ctx context.Context, userID int64) ([]sqlc.ListGlossaryTermsRow, error)
 	ListMessagesFn                 func(ctx context.Context, conversationID int64) ([]sqlc.Message, error)
@@ -144,9 +144,9 @@ func (f *fakeQuerier) CreateUser(ctx context.Context, arg sqlc.CreateUserParams)
 	return sqlc.User{}, nil
 }
 
-func (f *fakeQuerier) DeleteConnection(ctx context.Context, id int64) error {
+func (f *fakeQuerier) DeleteConnection(ctx context.Context, arg sqlc.DeleteConnectionParams) error {
 	if f.DeleteConnectionFn != nil {
-		return f.DeleteConnectionFn(ctx, id)
+		return f.DeleteConnectionFn(ctx, arg)
 	}
 	return nil
 }
@@ -312,9 +312,9 @@ func (f *fakeQuerier) GetUserByOIDCSubject(ctx context.Context, oidcSubject stri
 	return sqlc.User{}, nil
 }
 
-func (f *fakeQuerier) ListConnectionsForNote(ctx context.Context, sourceID int64) ([]sqlc.ListConnectionsForNoteRow, error) {
+func (f *fakeQuerier) ListConnectionsForNote(ctx context.Context, arg sqlc.ListConnectionsForNoteParams) ([]sqlc.ListConnectionsForNoteRow, error) {
 	if f.ListConnectionsForNoteFn != nil {
-		return f.ListConnectionsForNoteFn(ctx, sourceID)
+		return f.ListConnectionsForNoteFn(ctx, arg)
 	}
 	return nil, nil
 }

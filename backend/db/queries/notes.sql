@@ -1,6 +1,6 @@
 -- name: ListNotesByUser :many
 SELECT n.*,
-    array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL) as tag_names,
+    (array_agg(DISTINCT t.name) FILTER (WHERE t.name IS NOT NULL))::text[] as tags,
     count(DISTINCT c.id) as connection_count
 FROM notes n
 LEFT JOIN note_tags nt ON nt.note_id = n.id
@@ -67,7 +67,7 @@ SELECT *,
     ts_headline('english', title || ' - ' || summary || ' ' || body,
         plainto_tsquery('english', $2),
         'StartSel=<mark>, StopSel=</mark>, MaxWords=35, MinWords=15'
-    ) as snippet
+    )::text as snippet
 FROM notes
 WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2)
 ORDER BY ts_rank(search_vector, plainto_tsquery('english', $2)) DESC

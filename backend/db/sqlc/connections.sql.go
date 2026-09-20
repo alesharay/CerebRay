@@ -12,7 +12,9 @@ import (
 
 const createConnection = `-- name: CreateConnection :one
 INSERT INTO connections (source_id, target_id, label)
-VALUES ($1, $2, $3)
+SELECT $1::bigint, $2::bigint, $3::text
+WHERE EXISTS (SELECT 1 FROM notes src WHERE src.id = $1 AND src.user_id = $4)
+  AND EXISTS (SELECT 1 FROM notes tgt WHERE tgt.id = $2 AND tgt.user_id = $4)
 RETURNING id, source_id, target_id, label, created_at
 `
 
@@ -20,10 +22,16 @@ type CreateConnectionParams struct {
 	SourceID int64  `json:"source_id"`
 	TargetID int64  `json:"target_id"`
 	Label    string `json:"label"`
+	UserID   int64  `json:"user_id"`
 }
 
 func (q *Queries) CreateConnection(ctx context.Context, arg CreateConnectionParams) (Connection, error) {
-	row := q.db.QueryRow(ctx, createConnection, arg.SourceID, arg.TargetID, arg.Label)
+	row := q.db.QueryRow(ctx, createConnection,
+		arg.SourceID,
+		arg.TargetID,
+		arg.Label,
+		arg.UserID,
+	)
 	var i Connection
 	err := row.Scan(
 		&i.ID,
@@ -36,11 +44,18 @@ func (q *Queries) CreateConnection(ctx context.Context, arg CreateConnectionPara
 }
 
 const deleteConnection = `-- name: DeleteConnection :exec
-DELETE FROM connections WHERE id = $1
+DELETE FROM connections c
+USING notes n
+WHERE c.id = $1 AND n.id = c.source_id AND n.user_id = $2
 `
 
-func (q *Queries) DeleteConnection(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, deleteConnection, id)
+type DeleteConnectionParams struct {
+	ID     int64 `json:"id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error {
+	_, err := q.db.Exec(ctx, deleteConnection, arg.ID, arg.UserID)
 	return err
 }
 
@@ -100,8 +115,15 @@ SELECT c.id, c.source_id, c.target_id, c.label, c.created_at,
 FROM connections c
 JOIN notes n1 ON n1.id = c.source_id
 JOIN notes n2 ON n2.id = c.target_id
-WHERE c.source_id = $1 OR c.target_id = $1
+WHERE (c.source_id = $1 OR c.target_id = $1)
+  AND n1.user_id = $2
+  AND n2.user_id = $2
 `
+
+type ListConnectionsForNoteParams struct {
+	SourceID int64 `json:"source_id"`
+	UserID   int64 `json:"user_id"`
+}
 
 type ListConnectionsForNoteRow struct {
 	ID             int64       `json:"id"`
@@ -114,8 +136,8 @@ type ListConnectionsForNoteRow struct {
 	Direction      string      `json:"direction"`
 }
 
-func (q *Queries) ListConnectionsForNote(ctx context.Context, sourceID int64) ([]ListConnectionsForNoteRow, error) {
-	rows, err := q.db.Query(ctx, listConnectionsForNote, sourceID)
+func (q *Queries) ListConnectionsForNote(ctx context.Context, arg ListConnectionsForNoteParams) ([]ListConnectionsForNoteRow, error) {
+	rows, err := q.db.Query(ctx, listConnectionsForNote, arg.SourceID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

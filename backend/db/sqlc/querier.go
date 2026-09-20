@@ -19,7 +19,7 @@ type Querier interface {
 	CreateNoteEvent(ctx context.Context, arg CreateNoteEventParams) (NoteEvent, error)
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteConnection(ctx context.Context, id int64) error
+	DeleteConnection(ctx context.Context, arg DeleteConnectionParams) error
 	DeleteConversation(ctx context.Context, arg DeleteConversationParams) error
 	DeleteGlossaryTerm(ctx context.Context, arg DeleteGlossaryTermParams) error
 	DeleteNote(ctx context.Context, arg DeleteNoteParams) error
@@ -43,7 +43,7 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
 	GetUserByOIDCSubject(ctx context.Context, oidcSubject string) (User, error)
-	ListConnectionsForNote(ctx context.Context, sourceID int64) ([]ListConnectionsForNoteRow, error)
+	ListConnectionsForNote(ctx context.Context, arg ListConnectionsForNoteParams) ([]ListConnectionsForNoteRow, error)
 	ListConversations(ctx context.Context, arg ListConversationsParams) ([]Conversation, error)
 	ListGlossaryTerms(ctx context.Context, userID int64) ([]ListGlossaryTermsRow, error)
 	ListMessages(ctx context.Context, conversationID int64) ([]Message, error)

@@ -118,15 +118,18 @@ func (q *Queries) ListTagsByUser(ctx context.Context, userID int64) ([]ListTagsB
 }
 
 const removeNoteTag = `-- name: RemoveNoteTag :exec
-DELETE FROM note_tags WHERE note_id = $1 AND tag_id = $2
+DELETE FROM note_tags nt
+USING notes n
+WHERE nt.note_id = $1 AND nt.tag_id = $2 AND n.id = nt.note_id AND n.user_id = $3
 `
 
 type RemoveNoteTagParams struct {
 	NoteID int64 `json:"note_id"`
 	TagID  int64 `json:"tag_id"`
+	UserID int64 `json:"user_id"`
 }
 
 func (q *Queries) RemoveNoteTag(ctx context.Context, arg RemoveNoteTagParams) error {
-	_, err := q.db.Exec(ctx, removeNoteTag, arg.NoteID, arg.TagID)
+	_, err := q.db.Exec(ctx, removeNoteTag, arg.NoteID, arg.TagID, arg.UserID)
 	return err
 }
