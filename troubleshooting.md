@@ -4,6 +4,43 @@ Issues are listed newest first. Each entry captures what went wrong, how it was 
 
 ---
 
+## 2026-09-20: Every ExternalSecret in the cluster silently stopped syncing
+
+**Issue:** Found during a drift audit, not because anything broke. `cerebray-secrets` reported `SecretSyncedError`, and both `ClusterSecretStore/homelab-path-vault` and `ClusterSecretStore/secret-path-vault` were `InvalidProviderConfig` with the unhelpful message `unable to create client`. Every app kept running normally, which is why nobody noticed.
+
+**Investigation:** The store's message says nothing useful, so the first question was whether Vault was reachable at all. It was:
+
+```
+ping 100.114.88.8          -> 0% packet loss
+curl /v1/sys/health        -> http_code=503
+```
+
+503 is not a failure here. Vault returns it specifically to mean sealed, and `/v1/sys/seal-status` confirmed it:
+
+```json
+{"type":"shamir","initialized":true,"sealed":true,"t":1,"n":1}
+```
+
+So the NAS had restarted at some point and Vault came back sealed, as it always does. The initial read of "Vault unreachable" was wrong - it was reachable the whole time and answering correctly.
+
+**Root cause:** Vault was sealed. ExternalSecrets could not authenticate, so no secret could be refreshed anywhere in the cluster. Nothing broke because every ExternalSecret uses `deletionPolicy: Retain`, so the last successfully synced Secret stayed in place and the apps kept reading it.
+
+**Fix:** Unsealed Vault with the single Shamir key (`t:1`). The stores cache their status, so they needed a nudge rather than waiting out the refresh interval:
+
+```
+kubectl annotate clustersecretstore <name> force-sync="$(date +%s)" --overwrite
+```
+
+Same annotation on each ExternalSecret. All seven went `SecretSynced/True` across cerebray, archdraft, do-a-doc, keycloak and cert-manager.
+
+**Lessons learned:**
+- A sealed Vault is invisible from the app side. `Retain` keeps everything running on stale credentials, so the failure only shows up when you go looking or when a secret needs to rotate. This had been broken for an unknown length of time.
+- HTTP 503 from Vault means sealed, not down. Check `/v1/sys/seal-status` before concluding there is a network problem - `InvalidProviderConfig` on the ESO side gives no hint either way.
+- ESO caches store validation. After fixing the backend, force a reconcile with an annotation instead of waiting for the refresh interval (1h on most of these).
+- Worth adding an alert on `ClusterSecretStore` readiness, since the blast radius is every secret in the cluster and the symptom is silence.
+
+---
+
 ## 2026-09-20: Backend stuck in CrashLoopBackOff after the k3d cluster restarted
 
 **Issue:** The backend pod would not stay up. Logs showed it dying on the first line of work every time:
@@ -61,10 +98,14 @@ kubectl patch pv pvc-b8e82f49-253b-4585-b1f6-225c728479bd \
 - `docker logs` on these node containers returns a stale buffer, so `--since` can come back empty while the container is actively failing. Read the unfiltered tail and the in-container log instead.
 - A stale `InternalIP` on a `NotReady` node is a symptom of the node being stalled, not evidence of an address conflict.
 
+**Resolved later the same day**, during the follow-up drift audit:
+- All six PVs in the cluster are now `reclaimPolicy: Retain`, not just this one. The four that were still `Delete` were cerebray's own Redis, archdraft's Postgres, and do-a-doc's MongoDB and Redis.
+- `task k8s:manifests` is safe again. All five template regressions are fixed (the three named above plus `KEYCLOAK_CLIENT_ID` and a 256Mi memory limit that would OOMKill SSE streams), the Postgres tag now matches live rather than reverting to `"16"`, and the task preserves the deployed image tag instead of resetting it to `:latest`. A new `k8s:manifests:guard` refuses to run if the gitops checkout is behind `origin/main` or has uncommitted changes under `apps/base/cerebray` - the clone was three months stale when this was found.
+- `schema_migrations` did not exist in the live database at all, so `task db:migrate:up` would have replayed `000001` and failed on `relation "users" already exists`, leaving the tracker dirty. Baselined with `migrate force 8`; `up` is now a clean no-op.
+
 **Still open:**
-- **No backup exists for any cluster database.** There are no backup CronJobs and no `db:backup` task. The copy taken above is a one-off. The reclaim policy is now `Retain` on this one PV only.
-- **`task k8s:manifests` is currently a footgun.** The generator at `Taskfile.yml:533-625` has drifted from the live manifests and re-running it would regress two fixes already in this log: it drops `SSL_CERT_FILE`, the `homelab-ca` volume/mount and `KEYCLOAK_ISSUER_URL` from the 2026-04-10 Keycloak entry, and reverts Postgres to `tag: "16"` / `IfNotPresent` from the ErrImagePull entry below.
-- **The Postgres image is unpinned and has drifted a major version.** The HelmRelease runs `tag: latest` with `pullPolicy: Always` under a `>=16.0.0 <17.0.0` chart constraint, and the on-disk data directory is now `PG_VERSION` 18. A PG16 binary refuses to start against a PG18 data directory, so the Taskfile template's `tag: "16"` would brick the database, and the next major release can do the same on any pod restart.
+- **No backup exists for any cluster database.** There are no backup CronJobs and no `db:backup` task. The copy taken above is a one-off.
+- **The Postgres image is still unpinned.** The HelmRelease runs `tag: latest` with `pullPolicy: Always` under a `>=16.0.0 <17.0.0` chart constraint, and the on-disk data directory is `PG_VERSION` 18. The template now carries a warning comment, but a real pin to an explicit 18.x tag needs a maintenance window. Redis, MongoDB and Keycloak carry the same unpinned risk in other namespaces.
 - **`/health` checks nothing.** `internal/handlers/health.go` returns a static 200 and both the liveness and readiness probes point at it. Harmless while the process dies before listening, but any retry-on-startup change must split out a real `/ready` that pings Postgres and Redis first, or readiness will pass with a nil pool and every request will 500.
 - **The Redis startup ping has no timeout.** `cmd/server/main.go:61-68` uses a bare `context.Background()` where the Postgres ping gets 10 seconds. If Redis hangs rather than refusing, the process blocks forever in `Running`/not-ready instead of crash-looping.
 

@@ -2,8 +2,6 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm install --prefer-offline
-ARG VITE_POSTHOG_KEY
-ARG VITE_POSTHOG_HOST
 COPY . .
 RUN npm run build
 

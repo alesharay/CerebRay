@@ -29,7 +29,7 @@
 ### 3. Database
 
 - [x] PostgreSQL running via docker-compose.dev.yml
-- [x] golang-migrate wired up, all 7 migrations created and applied
+- [x] golang-migrate wired up, all 8 migrations created and applied
 - [x] sqlc configured, queries for all tables (users, notes, tags, connections, conversations, glossary, ai_usage)
 - [x] Schema defined: users, notes, tags/note_tags, connections, conversations/messages, glossary_terms, ai_usage_log
 - [x] Full-text search via tsvector/tsquery on note title and body
@@ -131,7 +131,7 @@ requires manual entry.
 - [x] Conversation conversion rate widget
 - [x] AI usage widget
 - [x] Stale note nudges (notes that need attention)
-- [ ] Trend sparklines for lifecycle data over time
+- [x] Trend sparklines for lifecycle data over time
 
 #### 10d. UI identity
 
@@ -180,7 +180,7 @@ Design principles for the dashboard and all pages:
 
 - [x] Prometheus /metrics endpoint (HTTP request counters, histograms)
 - [x] AI usage metrics (tokens consumed, requests, latency)
-- [ ] PostHog analytics - skipped for now
+- [x] Frontend RUM via Grafana Faro (`src/faro.ts`). PostHog dropped.
 - [x] Structured JSON logging in production (zerolog, request_id correlation)
 - [x] Prometheus scrape annotations on k8s pod template
 
@@ -212,12 +212,12 @@ Design principles for the dashboard and all pages:
 | Routing | React Router v7 | |
 | HTTP client | fetch / custom wrapper | |
 | Frontend tests | Vitest + RTL + Playwright | |
-| Backend language | Go 1.23+ | |
+| Backend language | Go 1.26+ | |
 | Backend router | Chi | Lightweight, idiomatic, middleware-friendly |
 | Auth | Keycloak OIDC via coreos/go-oidc | Session in Redis, local fallback mode |
 | AI engine | Anthropic Claude API | SSE streaming, Zettelkasten system prompt |
-| Database | PostgreSQL 16 via sqlc + golang-migrate | Full-text search with tsvector/tsquery |
-| Cache | Redis 7 | Sessions, search cache |
+| Database | PostgreSQL via sqlc + golang-migrate | Full-text search. 16 locally, 18 in the cluster |
+| Cache | Redis | Sessions only. 7 locally, 8 in the cluster |
 | Deployment | Docker Compose or k8s with Flux CD | GitOps two-repo pattern |
 | Secrets | Vault + ExternalSecrets operator | Vault on NAS, ESO syncs to k8s |
 | Ingress | ingress-nginx | Routes /api, /auth to backend; / to frontend |
@@ -295,10 +295,42 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 
 ---
 
+## Deferred / next up
+
+- [ ] **OpenAPI spec + Swagger UI.** There is no spec today; `backend/cmd/server/router.go`
+      is the source of truth for all 29 routes. The goal is a browsable Swagger page so the
+      API can be exercised and documented for users. Sized as its own piece of work.
+- [ ] **Database backups.** No backup exists for any database in the cluster. Needs a
+      `pg_dump` CronJob per stateful workload writing to the NAS, plus a `db:backup` task.
+- [ ] **Pin container image tags.** Postgres, Redis, MongoDB and Keycloak all run `:latest`
+      across namespaces and have silently drifted major versions. Cerebray's Postgres data
+      directory is PG 18; pinning needs a maintenance window.
+- [ ] **Move stateful workloads to the `nfs` StorageClass.** `local-path` pins a PV to a
+      single node, which is what caused the 2026-09-20 outage. Keycloak already uses `nfs`.
+      Requires a dump and restore since a bound PVC cannot be retargeted.
+- [ ] **Markdown rendering.** Note fields store Markdown but the UI renders raw text.
+- [ ] **ServiceMonitor for cerebray** so the `/metrics` endpoint is actually scraped.
+- [ ] **Migration Job in the deploy path.** Migrations are applied by hand today.
+- [ ] Raise `fs.inotify.max_user_instances` during cluster bring-up (Docker Desktop resets it).
+
 ## Notes and Decisions Log
 
-- **2026-04-10**: Phase 11 (Testing) mostly complete. Enabled sqlc Querier interface for handler mocking. Backend: 28 handler unit tests (notes CRUD/promote/search, chat usage, health, helpers) + 5 auth middleware tests with miniredis. Frontend: 43 tests across 8 files (zettel parser, NoteCard, Sidebar, DashboardPage, EchoesPage, LandingPage, authStore, utils). Added smoke test Taskfile task. Integration tests (testcontainers) and Playwright e2e deferred.
-- **2026-04-10**: Phase 12 (Observability) complete. Added Prometheus metrics via `internal/metrics/` package: HTTP request counter/histogram/gauge and AI token/request/duration metrics. Chi middleware records HTTP metrics using route patterns for low cardinality. `/metrics` endpoint exposed unauthenticated for Prometheus scraping. Enhanced structured logging with `request_id` correlation in all request logs, plus `RequestLogger` context helper for handler-level logs with user_id. K8s pod annotations added for Prometheus auto-discovery. PostHog skipped.
+- **2026-09-20**: Full drift audit after the Postgres outage (see troubleshooting.md).
+  Fixed: tag creation had never worked (frontend sent `{name}`, backend decoded `{tags:[]}`,
+  0 tag rows in production) and now has regression tests; search snippets were shipping as
+  base64 because sqlc inferred `[]byte` from `ts_headline`; connection and note-tag queries
+  were not scoped by `user_id`; sqlc is pinned to v1.30.0 via `go run` since v1.31 changes
+  nullable enum types and breaks the build; `schema_migrations` did not exist in production
+  and was baselined to 8; all six PVs patched to `reclaimPolicy: Retain`; the `k8s:manifests`
+  template had five regressions (SSL_CERT_FILE, KEYCLOAK_ISSUER_URL, KEYCLOAK_CLIENT_ID, the
+  homelab-ca mount, and a 256Mi memory limit that would OOMKill SSE streams) plus a guard so
+  it refuses to write into a stale gitops checkout. Removed dead code: `internal/domain` was
+  imported by nothing and was the source of the TypeScript/Go type divergence; PostHog build
+  args were plumbed through four files and consumed by none. Vault was found sealed, which
+  had silently broken every ExternalSecret in the cluster - all seven now sync.
+
+- **2026-04-10**: Phase 11 (Testing) mostly complete. Enabled sqlc Querier interface for handler mocking. Backend: 28 handler unit tests (notes CRUD/promote/search, chat usage, health, helpers) + 5 auth middleware tests with miniredis. Frontend: 43 tests across 8 files (zettel parser, NoteCard, Sidebar, DashboardPage, EchoesPage, LandingPage, authStore, utils). Added smoke test Taskfile task. Integration tests (testcontainers) and Playwright e2e have since landed - see `backend/internal/handlers/integration_test.go` and `frontend/e2e/`.
+- **2026-04-10**: Phase 12 (Observability) complete. Added Prometheus metrics via `internal/metrics/` package: HTTP request counter/histogram/gauge and AI token/request/duration metrics. Chi middleware records HTTP metrics using route patterns for low cardinality. `/metrics` endpoint exposed unauthenticated for Prometheus scraping. Enhanced structured logging with `request_id` correlation in all request logs, plus `RequestLogger` context helper for handler-level logs with user_id. PostHog skipped. Correction (2026-09-20): the pod annotations were never applied and would be inert anyway - this cluster discovers targets via ServiceMonitors, and no ServiceMonitor exists for cerebray, so `/metrics` is not scraped yet. `/metrics` is also not routed by the ingress, so it is reachable in-cluster only.
 - **2026-04-10**: Phase 10e/10f complete. Interactive knowledge graph with zoom/pan (d3-zoom), drag (d3-drag), hover highlighting, HTML tooltips, color legend, search/filter, and SPA navigation. Cluster visualization deferred until 100+ notes. Echoes page simplified to title + age + actions. Chat follow-up suggestions with Save to Inbox cards. Refresh from chat action on note detail page. Dashboard trend sparklines via new GetLifecycleTrend backend query (weekly counts over 90 days).
 - **2026-04-10**: Workflow refactor complete (Phase 10). Inbox is now quick-capture, promote triggers AI expansion, note detail page has embedded chat. Chat page removed from nav. Added Phase 10e (interactive knowledge graph) and 10f (UX fixes) based on user testing. Broken d3 zoom placeholder fixed. SSE buffer flush bug found and fixed (done event not processed). Zettel parser upgraded for multi-line field content. Deployed to homelab k8s with all infrastructure operational.
 - **2026-04-09**: Added Phase 10 (Analytics Dashboard). New `note_events` table to track status transitions automatically. Dashboard redesign with inbox overview, lifecycle metrics, Zettelkasten strength score, conversation conversion rate, AI budget, and stale note detection. All lifecycle data is system-tracked, no manual entry. UI identity established: Quicksand font, warm palette, notebook aesthetic - explicitly not a Grafana-style monitoring UI.

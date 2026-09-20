@@ -29,8 +29,9 @@ Run the full app on any machine with Docker. No Kubernetes, no private registry,
 ### 1. Configure
 
 ```bash
-git clone <repo-url> && cd zettelkasten-app
+git clone <repo-url> && cd cerebray
 cp .env.example backend/.env
+cp .env.example .env   # docker-compose.prod.yml reads POSTGRES_PASSWORD from here
 ```
 
 Edit `backend/.env` and set these values at minimum:
@@ -39,7 +40,11 @@ Edit `backend/.env` and set these values at minimum:
 |----------|------------|---------|
 | `SESSION_SECRET` | Any random string, 32+ characters | `openssl rand -hex 32` |
 | `ANTHROPIC_API_KEY` | API key from [console.anthropic.com](https://console.anthropic.com) | `sk-ant-...` |
-| `DATABASE_URL` | PostgreSQL connection string | `postgres://cerebray:cerebray@postgres:5432/cerebray?sslmode=disable` |
+| `POSTGRES_PASSWORD` | Database password, in the repo-root `.env` | any strong string |
+
+`DATABASE_URL` and `REDIS_URL` are set by `docker-compose.prod.yml` itself, so
+editing them in `backend/.env` has no effect on the Compose stack. They matter
+only when running the backend directly with `task backend:run`.
 
 Leave `KEYCLOAK_ISSUER_URL` empty to use local auth (no Keycloak needed). See the [Authentication](#authentication) section for details.
 
@@ -75,16 +80,17 @@ The session mechanism is identical in both modes. Downstream handlers don't know
 
 | Layer | Choice |
 | --- | --- |
-| Frontend | Vite + React 19 + TypeScript + Tailwind CSS + shadcn/ui |
+| Frontend | Vite + React 19 + TypeScript + Tailwind CSS (shadcn utilities only) |
 | State | Zustand |
 | Backend | Go with Chi router |
 | Auth | Keycloak OIDC or local auth, sessions in Redis |
 | AI | Anthropic Claude (streaming via SSE) |
-| Database | PostgreSQL 16 (full-text search with tsvector/tsquery) |
-| Cache | Redis 7 |
+| Database | PostgreSQL, full-text search with tsvector/tsquery (16 locally, 18 in the cluster) |
+| Cache | Redis, sessions only (7 locally, 8 in the cluster) |
 | SQL | sqlc (type-safe generated Go from SQL) |
 | Migrations | golang-migrate |
 | CI | Gitea Actions (lint, test, build, push on push to main) |
+| Observability | Prometheus `/metrics`, Grafana Faro RUM |
 
 ---
 
@@ -92,12 +98,15 @@ The session mechanism is identical in both modes. Downstream handlers don't know
 
 ### Prerequisites
 
-- Go 1.23+
-- Node 20+
+- Go 1.26+
+- Node 22+
 - Docker (for PostgreSQL and Redis)
 - [Task](https://taskfile.dev/installation/) (task runner)
 - [golang-migrate CLI](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
-- [sqlc](https://docs.sqlc.dev/en/latest/overview/install.html)
+
+sqlc does not need installing - `task db:sqlc:generate` runs a pinned version
+via `go run`, so everyone generates identical code. See `SQLC_VERSION` in
+`Taskfile.yml` before bumping it.
 
 ### First-time setup
 
@@ -132,6 +141,8 @@ The Vite dev server proxies `/api` and `/auth` requests to `:8080` automatically
 ```bash
 task test                  # run all backend and frontend tests in parallel
 task backend:test          # Go tests only
+task backend:test:short    # skip long-running integration tests
+task backend:test:integration  # testcontainers integration tests (needs Docker)
 task frontend:test         # Vitest component tests only
 task frontend:test:e2e     # Playwright end-to-end tests
 ```
@@ -144,9 +155,23 @@ task typecheck             # go vet + tsc --noEmit
 task build                 # compile Go binary + Vite production build
 task db:migrate:create -- add_tags_table   # create a new migration
 task db:sqlc:generate      # regenerate Go code from SQL queries
+task db:seed               # load sample data for local dev
 task infra:logs            # tail Docker Compose logs
 task infra:reset           # wipe local DB volumes (destructive)
 task                       # list all available tasks
+```
+
+### Cluster operations
+
+```bash
+task k8s:diagnose          # nodes + pods + events + storage, start here when something is down
+task k8s:nodes             # node status
+task k8s:events            # recent namespace events, oldest first
+task k8s:storage           # PVCs, PVs and storage classes
+task k8s:logs:backend      # tail backend logs
+task k8s:logs:backend:prev # previous container's logs (use when crash looping)
+task k8s:manifests         # regenerate gitops manifests (guarded against a stale checkout)
+task flux:status           # Flux reconciliation state
 ```
 
 ---
@@ -161,26 +186,30 @@ cerebray/
 │   │   ├── migrations/      # SQL migration files
 │   │   ├── queries/         # sqlc query files
 │   │   └── sqlc/            # Generated Go code
+│   ├── Dockerfile
 │   └── internal/
 │       ├── ai/              # Claude API client + streaming
-│       ├── auth/            # Keycloak OIDC, local auth, session middleware
-│       ├── cache/           # Redis client
+│       ├── auth/            # Keycloak OIDC, local auth, sessions in Redis
 │       ├── config/          # Environment config loading
-│       ├── domain/          # Domain types (Note, Tag, User, etc.)
-│       ├── handlers/        # HTTP handlers
-│       ├── middleware/       # Logging, recovery, CORS, auth
-│       ├── repositories/    # Database access layer
-│       └── services/        # Business logic
+│       ├── handlers/        # HTTP handlers (use db/sqlc directly)
+│       ├── metrics/         # Prometheus collectors
+│       └── middleware/      # Logging, recovery, CORS, auth
 ├── frontend/
 │   ├── src/
 │   │   ├── api/             # HTTP client layer
-│   │   ├── components/      # UI components (layout, notes, chat, markdown)
+│   │   ├── components/      # UI components (layout, notes)
 │   │   ├── hooks/           # Custom React hooks
+│   │   ├── lib/             # utils, zettelParser
 │   │   ├── pages/           # Route-level page components
 │   │   ├── store/           # Zustand stores
-│   │   └── types/           # TypeScript type definitions
+│   │   ├── types/           # TypeScript type definitions
+│   │   └── faro.ts          # Grafana Faro RUM setup
+│   ├── e2e/                 # Playwright end-to-end tests
 │   ├── nginx.conf           # Production reverse proxy config
+│   ├── Dockerfile
 │   └── package.json
+├── .gitea/workflows/ci.yaml # CI pipeline
+├── .env.example             # App secrets template
 ├── docker-compose.dev.yml   # Local dev infrastructure (PostgreSQL + Redis)
 ├── docker-compose.prod.yml  # Full production stack
 ├── deploy.env.example       # Deployment config overrides
@@ -188,6 +217,10 @@ cerebray/
 ├── troubleshooting.md       # Issue resolution log
 └── PROJECT_PLAN.md          # Build plan and progress tracker
 ```
+
+There is no repository layer and no service layer - handlers call the sqlc
+generated queries directly. There is no OpenAPI spec yet; `backend/cmd/server/router.go`
+is the authoritative list of routes.
 
 ---
 
@@ -219,7 +252,7 @@ Key overrides:
 
 The Taskfile loads `deploy.env` automatically. After setting overrides, `task k8s:manifests` generates k8s YAML and `task deploy:all` builds and pushes images.
 
-See [PROJECT_PLAN.md](PROJECT_PLAN.md) Phase 12 for the full deployment checklist and [troubleshooting.md](troubleshooting.md) for resolved issues.
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) Phase 13 for the full deployment checklist and [troubleshooting.md](troubleshooting.md) for resolved issues.
 
 ---
 
