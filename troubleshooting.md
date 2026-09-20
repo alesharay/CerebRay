@@ -28,7 +28,18 @@ Every database created before the image moved carries the old version. `template
 
 **Root cause:** The HelmRelease runs `image.tag: latest` with `pullPolicy: Always`. A newer Bitnami base image shipped a newer glibc, taking the collation library from 2.36 to 2.43 underneath a data directory initialised against 2.36. Same unpinned-tag drift that moved this database from PostgreSQL 16 to 18.
 
-**Fix:** Not yet applied - see "Still open" below. The remedy is `REINDEX DATABASE cerebray;` followed by `ALTER DATABASE cerebray REFRESH COLLATION VERSION;`, which rebuilds every index under the current collation and clears the warning. At 14 notes this is effectively instantaneous. It should be done with a verified backup in hand, which now exists.
+**Fix:** Took a fresh backup first, then rebuilt every index under the current collation and cleared the marker:
+
+```
+REINDEX DATABASE cerebray;
+ALTER DATABASE cerebray REFRESH COLLATION VERSION;
+```
+
+31 indexes rebuilt, instant at this data size. Afterwards `cerebray` reads `2.43 / 2.43`, no invalid indexes, row counts unchanged (1 user, 14 notes, 28 conversations, 71 messages, 26 events), full-text search and status filtering both still return the expected rows.
+
+A survey of the other instances first showed only cerebray was affected. Keycloak reads `2.36 / 2.36` because `bitnamilegacy` is a frozen mirror whose glibc never moved, and archdraft records no collation version at all because `postgres:16-alpine` links musl rather than glibc. Neither needs anything.
+
+**Not fixed:** the `postgres` and `template1` databases in the cerebray instance are still `2.36 / 2.43`. Both are owned by the `postgres` superuser, and this deployment has no superuser password - the chart mounts `cerebray-secrets`, which has no `postgres-password` key, so startup logs `Skipping export of POSTGRES_POSTGRES_PASSWORD`. The practical cost is that a plain `CREATE DATABASE` is still refused; `CREATE DATABASE ... TEMPLATE template0` works and is what `task k8s:backup:verify` uses. Fixing it properly means adding a superuser password to Vault and restarting the StatefulSet, which is not worth it for an empty template database.
 
 **Lessons learned:**
 - A glibc collation change silently invalidates the sort order that text B-tree indexes were built with. Postgres warns on `CREATE DATABASE` but does **not** warn on ordinary queries, so the failure mode is an index scan missing rows that are really there, or a unique constraint failing to catch a duplicate. Nothing in the app would look wrong.
