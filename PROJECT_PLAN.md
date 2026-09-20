@@ -293,8 +293,15 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
 - [ ] **OpenAPI spec + Swagger UI.** There is no spec today; `backend/cmd/server/router.go`
       is the source of truth for all 29 routes. The goal is a browsable Swagger page so the
       API can be exercised and documented for users. Sized as its own piece of work.
-- [ ] **Database backups.** No backup exists for any database in the cluster. Needs a
-      `pg_dump` CronJob per stateful workload writing to the NAS, plus a `db:backup` task.
+- [x] **Database backups.** Nightly CronJobs for all four databases (cerebray, archdraft
+      and keycloak Postgres, do-a-doc MongoDB) dump to the NAS over NFS with 14 day
+      retention, staggered an hour apart. Verified by restoring into a scratch database,
+      not just by the job exiting 0. `task k8s:backup:now|list|verify` drive them by hand.
+- [ ] **Fix the collation version mismatch.** `cerebray`, `postgres` and `template1` were
+      initialised under glibc collation 2.36 but the OS now provides 2.43, so text index
+      ordering may not match query ordering and `CREATE DATABASE` is refused. Remedy is
+      `REINDEX DATABASE cerebray;` then `ALTER DATABASE cerebray REFRESH COLLATION VERSION;`.
+      See troubleshooting.md.
 - [ ] **Pin container image tags.** Postgres, Redis, MongoDB and Keycloak all run `:latest`
       across namespaces and have silently drifted major versions. Cerebray's Postgres data
       directory is PG 18; pinning needs a maintenance window.

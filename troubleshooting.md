@@ -4,6 +4,40 @@ Issues are listed newest first. Each entry captures what went wrong, how it was 
 
 ---
 
+## 2026-09-20: CREATE DATABASE fails with a collation version mismatch
+
+**Issue:** Found while restore-testing the first backup, not by anything failing in the app. Creating a scratch database to restore into was rejected outright:
+
+```
+ERROR:  template database "template1" has a collation version mismatch
+DETAIL:  The template database was created using collation version 2.36,
+         but the operating system provides version 2.43.
+```
+
+**Investigation:** The mismatch is not limited to `template1`:
+
+```
+  datname  | datcollversion | actual
+ cerebray  | 2.36           | 2.43
+ postgres  | 2.36           | 2.43
+ template1 | 2.36           | 2.43
+ template0 |                | 2.43
+```
+
+Every database created before the image moved carries the old version. `template0` has no recorded version, which is why `CREATE DATABASE ... TEMPLATE template0` still works and was the workaround used to finish the restore test.
+
+**Root cause:** The HelmRelease runs `image.tag: latest` with `pullPolicy: Always`. A newer Bitnami base image shipped a newer glibc, taking the collation library from 2.36 to 2.43 underneath a data directory initialised against 2.36. Same unpinned-tag drift that moved this database from PostgreSQL 16 to 18.
+
+**Fix:** Not yet applied - see "Still open" below. The remedy is `REINDEX DATABASE cerebray;` followed by `ALTER DATABASE cerebray REFRESH COLLATION VERSION;`, which rebuilds every index under the current collation and clears the warning. At 14 notes this is effectively instantaneous. It should be done with a verified backup in hand, which now exists.
+
+**Lessons learned:**
+- A glibc collation change silently invalidates the sort order that text B-tree indexes were built with. Postgres warns on `CREATE DATABASE` but does **not** warn on ordinary queries, so the failure mode is an index scan missing rows that are really there, or a unique constraint failing to catch a duplicate. Nothing in the app would look wrong.
+- `pg_database_collation_actual_version(oid)` compared against `datcollversion` is the check. Worth running after any Postgres image change.
+- This is a second, quieter cost of `image.tag: latest` on a database. The major version jump was the obvious one; this one leaves no trace until something tries to create a database.
+- Restore-testing a backup is what surfaced it. A backup job exiting 0 proves nothing - restoring it exercises paths the dump never touches.
+
+---
+
 ## 2026-09-20: Every ExternalSecret in the cluster silently stopped syncing
 
 **Issue:** Found during a drift audit, not because anything broke. `cerebray-secrets` reported `SecretSyncedError`, and both `ClusterSecretStore/homelab-path-vault` and `ClusterSecretStore/secret-path-vault` were `InvalidProviderConfig` with the unhelpful message `unable to create client`. Every app kept running normally, which is why nobody noticed.

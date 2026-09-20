@@ -452,6 +452,10 @@ tasks:
           - backend.yaml
           - frontend.yaml
           - ingress.yaml
+          # backup.yaml is hand-maintained in the gitops repo, not templated
+          # here. It must stay listed or a regen would silently unregister the
+          # nightly database backup.
+          - backup.yaml
         EOF
       - |
         cat > {{.D}}/namespace.yaml << 'EOF'
@@ -836,6 +840,35 @@ tasks:
       - kubectl get pvc -n cerebray
       - kubectl get pv
       - kubectl get sc
+
+  k8s:backup:now:
+    desc: Run the nightly database backup immediately instead of waiting for 03:30
+    cmds:
+      - kubectl create job -n cerebray --from=cronjob/postgres-backup backup-manual-$(date +%s)
+      - echo "Started. Watch with - task k8s:backup:logs"
+
+  k8s:backup:list:
+    desc: List the database backups currently on the NAS
+    cmds:
+      - |
+        kubectl run backup-ls-$$ --rm -i --restart=Never -n cerebray \
+          --image=docker.io/bitnami/postgresql:latest \
+          --overrides='{"spec":{"containers":[{"name":"ls","image":"docker.io/bitnami/postgresql:latest","command":["sh","-c","ls -lh /backups"],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"postgres-backups"}}]}}'
+
+  k8s:backup:logs:
+    desc: Show output from the most recent backup job
+    cmds:
+      - kubectl logs -n cerebray -l job-name --tail=20 --prefix=true --selector=job-name 2>/dev/null || kubectl get jobs -n cerebray
+
+  k8s:backup:verify:
+    desc: Restore the newest backup into a scratch database and report row counts
+    cmds:
+      # Proves the dump is restorable, not just present. Uses TEMPLATE
+      # template0 because template1 carries a stale collation version.
+      - |
+        kubectl run backup-verify-$$ --rm -i --restart=Never -n cerebray \
+          --image=docker.io/bitnami/postgresql:latest \
+          --overrides='{"spec":{"securityContext":{"runAsUser":1001,"fsGroup":1001},"containers":[{"name":"v","image":"docker.io/bitnami/postgresql:latest","command":["bash","-c","set -e; export PGHOST=postgresql.cerebray.svc.cluster.local PGUSER=cerebray; f=$(ls -t /backups/cerebray-*.dump | head -1); echo \"verifying $f\"; psql -d cerebray -q -c \"DROP DATABASE IF EXISTS restore_verify;\"; psql -d cerebray -q -c \"CREATE DATABASE restore_verify TEMPLATE template0;\"; pg_restore -d restore_verify --no-owner \"$f\" 2>&1 | tail -3; psql -d restore_verify -c \"SELECT (SELECT count(*) FROM users) users, (SELECT count(*) FROM notes) notes, (SELECT count(*) FROM conversations) convs, (SELECT count(*) FROM messages) msgs;\"; psql -d cerebray -q -c \"DROP DATABASE restore_verify;\""],"env":[{"name":"PGPASSWORD","valueFrom":{"secretKeyRef":{"name":"cerebray-secrets","key":"database-password"}}}],"volumeMounts":[{"name":"b","mountPath":"/backups"}]}],"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"postgres-backups"}}]}}'
 
   k8s:diagnose:
     desc: First command to run when something is down - nodes, pods, events, storage
