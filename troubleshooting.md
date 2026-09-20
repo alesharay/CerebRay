@@ -4,6 +4,72 @@ Issues are listed newest first. Each entry captures what went wrong, how it was 
 
 ---
 
+## 2026-09-20: Backend stuck in CrashLoopBackOff after the k3d cluster restarted
+
+**Issue:** The backend pod would not stay up. Logs showed it dying on the first line of work every time:
+
+```
+{"level":"info","message":"starting cerebray"}
+{"level":"fatal","error":"failed to connect to `user=cerebray database=cerebray`: 10.43.233.8:5432 ... connect: connection refused","message":"pinging postgres"}
+```
+
+The frontend and Redis were both fine, which made it look like a backend problem. It was not.
+
+**Investigation:** `kubectl get pods -n cerebray` showed `postgresql-0` sitting in `Pending`, so the backend was just the last domino. The scheduler said why:
+
+```
+0/3 nodes are available: 1 node(s) had untolerated taint {node.kubernetes.io/unreachable: },
+2 node(s) didn't match PersistentVolume's node affinity.
+```
+
+`k3d-homelab-agent-2` was `NotReady` ("Kubelet stopped posting node status"), and the Postgres PV is a `local-path` volume with `nodeAffinity` pinning it to exactly that node. Redis survived only because its PV happened to land on agent-0.
+
+The node container itself was `Up`, so this was not a dead container. Inside it, the k3s agent was stuck in a one-second loop: `Waiting for containerd startup: rpc error: code = Unimplemented desc = unknown service runtime.v1.RuntimeService`. Containerd's own log at `/var/lib/rancher/k3s/agent/containerd/containerd.log` had the real error:
+
+```
+failed to load plugin ... failed to create CRI service:
+failed to create cni conf monitor for default: failed to create fsnotify watcher: too many open files
+```
+
+`fs.inotify.max_user_instances` in the Docker Desktop VM is 512, and that limit is per-uid across the *whole* VM, shared by all three k3d nodes and every pod on them. Per-container `ulimit -n` was identical on the healthy agent-0, which is what ruled out a node-specific misconfiguration.
+
+One red herring worth recording: the Node object was advertising `InternalIP 172.18.0.2`, which is agent-0's address, while agent-2's actual Docker IP was `172.18.0.3`. That looked like an IP conflict but was just the last-known-good status cached from before the restart. It self-corrected the moment the kubelet posted a real update.
+
+**Root cause:** A Docker Desktop restart brought all three k3d node containers back at once. On agent-2, containerd's CRI plugin failed to load because the shared inotify instance limit was exhausted, so the CRI runtime service never registered. The kubelet cannot start until containerd answers, so it never posted node status, the node went `NotReady` and picked up the `unreachable` taint, and the node-pinned `local-path` PV made `postgresql-0` unschedulable anywhere else. No Postgres endpoint meant the backend's startup ping failed and the process called `log.Fatal`.
+
+**Fix:** Backed up the Postgres data directory first, since no backup of it existed anywhere:
+
+```
+docker cp k3d-homelab-agent-2:/var/lib/rancher/k3s/storage/pvc-b8e82f49-..._cerebray_data-postgresql-0/data \
+  "/Volumes/WD 2TB/Dev/homelab/backups/cerebray-pg-20260920"
+```
+
+Verified it matched the source exactly (1346 files, 64M, `PG_VERSION` 18), then patched the PV off its auto-delete policy as a safety net:
+
+```
+kubectl patch pv pvc-b8e82f49-253b-4585-b1f6-225c728479bd \
+  -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+```
+
+`docker restart k3d-homelab-agent-2` failed with "tried to kill container, but did not receive an exit event" and left it `Exited (143)`. A plain `docker start` brought it back cleanly. Containerd loaded, the kubelet registered with the correct IP, the taint cleared, and `postgresql-0` scheduled and replayed WAL without incident (`redo done`, `database system is ready to accept connections`). Deleting the backend pod cleared its five-minute backoff and it came up connected. Data verified intact: 1 user, 14 notes, 28 conversations, 71 messages.
+
+**Lessons learned:**
+- Start at the scheduler, not the application logs. The backend's fatal error was accurate and completely useless - `kubectl get events` and the `Pending` pod named the problem immediately, and there is still no Taskfile task that surfaces either.
+- `local-path` pins a PV to one node through `nodeAffinity`, and `WaitForFirstConsumer` means that pin is decided silently by wherever the pod first landed. `postgresql.yaml` never sets a `storageClass`, so it inherits the `local-path` default and the pin exists nowhere in the manifests. Adding a `nodeSelector` would not help - the PVC has already bound.
+- The `nfs` StorageClass (NAS-backed, `reclaimPolicy: Retain`) is already installed and Keycloak uses it via `global.storageClass: nfs`. Cerebray's Postgres and Redis, and do-a-doc's MongoDB and Redis, all silently inherit `local-path` and carry this identical failure mode today.
+- A `NotReady` node whose container is still `Up` is usually a container-runtime problem, not a dead node. Check for the `Waiting for containerd startup` loop and read containerd's own log before concluding anything is corrupt.
+- `docker logs` on these node containers returns a stale buffer, so `--since` can come back empty while the container is actively failing. Read the unfiltered tail and the in-container log instead.
+- A stale `InternalIP` on a `NotReady` node is a symptom of the node being stalled, not evidence of an address conflict.
+
+**Still open:**
+- **No backup exists for any cluster database.** There are no backup CronJobs and no `db:backup` task. The copy taken above is a one-off. The reclaim policy is now `Retain` on this one PV only.
+- **`task k8s:manifests` is currently a footgun.** The generator at `Taskfile.yml:533-625` has drifted from the live manifests and re-running it would regress two fixes already in this log: it drops `SSL_CERT_FILE`, the `homelab-ca` volume/mount and `KEYCLOAK_ISSUER_URL` from the 2026-04-10 Keycloak entry, and reverts Postgres to `tag: "16"` / `IfNotPresent` from the ErrImagePull entry below.
+- **The Postgres image is unpinned and has drifted a major version.** The HelmRelease runs `tag: latest` with `pullPolicy: Always` under a `>=16.0.0 <17.0.0` chart constraint, and the on-disk data directory is now `PG_VERSION` 18. A PG16 binary refuses to start against a PG18 data directory, so the Taskfile template's `tag: "16"` would brick the database, and the next major release can do the same on any pod restart.
+- **`/health` checks nothing.** `internal/handlers/health.go` returns a static 200 and both the liveness and readiness probes point at it. Harmless while the process dies before listening, but any retry-on-startup change must split out a real `/ready` that pings Postgres and Redis first, or readiness will pass with a nil pool and every request will 500.
+- **The Redis startup ping has no timeout.** `cmd/server/main.go:61-68` uses a bare `context.Background()` where the Postgres ping gets 10 seconds. If Redis hangs rather than refusing, the process blocks forever in `Running`/not-ready instead of crash-looping.
+
+---
+
 ## 2026-09-07: Promoting a note dies partway with "Error in input stream"
 
 **Issue:** Promoting a note from the Inbox streamed AI text for a while, then stopped and showed "Error in input stream" in the UI. Short chat messages were unaffected.

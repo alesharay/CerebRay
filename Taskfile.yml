@@ -753,3 +753,33 @@ tasks:
     desc: Tail frontend pod logs in the cerebray namespace
     cmds:
       - kubectl logs -n cerebray -l app=frontend -f
+
+  k8s:logs:backend:prev:
+    desc: Show backend logs from the previous container (use when it is crash looping)
+    cmds:
+      - kubectl logs -n cerebray -l app=backend --previous --tail=50
+
+  k8s:nodes:
+    desc: Show cluster nodes and their status
+    cmds:
+      - kubectl get nodes -o wide
+
+  k8s:events:
+    desc: Show recent events in the cerebray namespace, oldest first
+    cmds:
+      - kubectl get events -n cerebray --sort-by=.lastTimestamp
+
+  k8s:storage:
+    desc: Show PVCs, PVs and storage classes backing the cerebray namespace
+    cmds:
+      - kubectl get pvc -n cerebray
+      - kubectl get pv
+      - kubectl get sc
+
+  k8s:diagnose:
+    desc: First command to run when something is down - nodes, pods, events, storage
+    cmds:
+      - task: k8s:nodes
+      - task: k8s:pods
+      - task: k8s:events
+      - task: k8s:storage
