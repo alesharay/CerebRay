@@ -302,11 +302,18 @@ ingress.yaml, secret.yaml, namespace.yaml, kustomization.yaml
       glibc 2.43. Keycloak and archdraft were surveyed and are unaffected. The `postgres`
       and `template1` databases remain stale because this deployment has no superuser
       password; the only cost is that `CREATE DATABASE` needs `TEMPLATE template0`.
-- [ ] **Pin container image tags.** Postgres, Redis, MongoDB and Keycloak all run `:latest`
-      across namespaces and have silently drifted major versions. Cerebray's Postgres data
-      directory is PG 18; pinning needs a maintenance window.
+- [x] **Pin container image tags.** Every workload in the cluster is now pinned; a sweep
+      for `:latest` returns nothing. bitnami's postgresql, redis and mongodb no longer
+      publish versioned tags at all, so those are pinned by digest to the builds already
+      running. bitnamilegacy (keycloak) still has real tags, verified byte-identical to
+      the `latest` they replaced. Chart versions are pinned exactly too - a floating range
+      lets the chart drift underneath a pinned image. The cerebray postgresql chart stays
+      on 16.7.27 despite driving a PG 18.6 image; moving to an 18.x chart is its own job.
 - [ ] **Move stateful workloads to the `nfs` StorageClass.** `local-path` pins a PV to a
       single node, which is what caused the 2026-09-20 outage. Keycloak already uses `nfs`.
+      Currently recommended against for cerebray: the data is tiny, the PV is now `Retain`,
+      backups exist, and that StorageClass is `nfsvers=3,nolock` - weak fsync durability
+      and no locking under a single-writer database.
       Requires a dump and restore since a bound PVC cannot be retargeted.
 - [ ] **Markdown rendering.** Note fields store Markdown but the UI renders raw text.
 - [x] **ServiceMonitor for cerebray.** Prometheus scrapes the backend every 30s. Needed

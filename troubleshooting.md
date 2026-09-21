@@ -4,6 +4,45 @@ Issues are listed newest first. Each entry captures what went wrong, how it was 
 
 ---
 
+## 2026-09-20: do-a-doc MongoDB crash loops on DBPathInUse during any update
+
+**Issue:** Surfaced while pinning image tags. Changing the MongoDB image left the new pod in `CrashLoopBackOff` while the old one kept serving:
+
+```
+DBPathInUse: Unable to lock the lock file: /bitnami/mongodb/data/db/mongod.lock
+(Resource temporarily unavailable). Another mongod instance is already running
+on the /bitnami/mongodb/data/db directory
+```
+
+**Investigation:** Not caused by the image change. MongoDB is deployed as a single-replica **Deployment** on a **ReadWriteOnce** volume, using the default `RollingUpdate` strategy:
+
+```
+{"rollingUpdate":{"maxSurge":"25%","maxUnavailable":"25%"},"type":"RollingUpdate"}
+```
+
+Kubernetes starts the replacement pod before terminating the old one. Both land on the same node and mount the same PVC, and the second `mongod` cannot take the lock the first one holds. The running pod's restart count of 48 is the same problem recurring over months.
+
+**Root cause:** `RollingUpdate` is wrong for a single-replica database on RWO storage. Any change to that HelmRelease would have hit this, so the workload was effectively unupdatable.
+
+**Fix:** Set `updateStrategy.type: Recreate` in the HelmRelease values, which terminates the old pod before creating the new one.
+
+Applying it needed a manual step, because Helm could not complete the upgrade that contained the fix while the rollout it was meant to fix was stuck. Patching the live Deployment directly then failed a second way:
+
+```
+Deployment.apps "mongodb" is invalid: spec.strategy.rollingUpdate:
+Forbidden: may not be specified when strategy `type` is 'Recreate'
+```
+
+Helm's three-way strategic merge does not remove the `rollingUpdate` block when the strategy type changes. Deleting the Deployment object - leaving the PVC and its data untouched - let Helm recreate it cleanly on the next reconcile.
+
+**Lessons learned:**
+- A single-replica stateful workload on a RWO volume must use `Recreate`. With `RollingUpdate` the new pod deadlocks against the old one holding the data directory lock, and the symptom looks like whatever change you happened to be making.
+- A high restart count on a long-running pod is worth reading as a signal. 48 restarts was this exact deadlock recurring, not noise.
+- Switching a Deployment between strategy types cannot be done by patching or by a Helm upgrade, because the old `rollingUpdate` block is never removed by a merge patch. Delete the Deployment and let it be recreated - the PVC is a separate object and keeps the data.
+- Pinning image tags is worth doing partly because it forces an update through every one of these paths while you are watching.
+
+---
+
 ## 2026-09-20: CREATE DATABASE fails with a collation version mismatch
 
 **Issue:** Found while restore-testing the first backup, not by anything failing in the app. Creating a scratch database to restore into was rejected outright:
